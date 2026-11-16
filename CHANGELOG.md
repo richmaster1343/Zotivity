@@ -2,6 +2,59 @@
 
 All notable changes, newest first.
 
+## 1.2.7 – 2026-11-16
+
+### Added
+- **Whole texts under Ask.** If the texts in scope fit the language model together (a limit per provider under
+  Settings → Expert, cautious defaults, small for Ollama), the model gets the whole texts with page marks instead of
+  selected passages. A question about a book or a few articles is answered from the whole text. Citations lead to the
+  PDF page. Follow-up questions in the same chat use prompt caching. Triggered automatically from Zotero, by the new
+  switch **Scope: Automatic · Passages · Whole texts**, or by **Ask this text** in the list of texts in a corpus.
+- **Plan line and basis.** Before sending, a line shows what will happen (whole texts or passages, amount of text,
+  active session values with a reset). Under each answer, "Basis: 18 passages from 7 of 100 texts" or "whole text".
+- **"Automatic" adapts to the number of texts.** Passages, the limit per text, diversity and neighbouring sections
+  follow the number of texts in scope (1–3, 4–30, 31–200, more). Values set deliberately under Expert stay; it can be
+  switched off for fixed values.
+- **Question type and overview cards.** The helper model classifies a question as detail, overview or evidence; the
+  plan line shows it and it can be set by hand. Overview and comparison questions get a short card per text (abstract,
+  details, evaluation sheet if there is one), so every text in scope appears.
+- **Reading in stages.** Texts above the limit (up to 5) can be read chapter by chapter with the new scope **In
+  stages**: notes per stage with page numbers (helper or main model, Settings → Expert), then the answer from all
+  notes. Slower, but complete; the notes are shown below the answer.
+
+### Changed
+- **Search options under Ask no longer override later changes.** A change under Settings → Expert or a preset switch
+  drops the session values: what was set last wins. "Max. per text" goes up to 50.
+- **Texts in a corpus (Index): open work first.** Open texts and problems are at the top of the list, indexed texts
+  at the bottom.
+
+### Fixed
+- **Quote check in literature reviews.** Quotation marks are paired by direction («…», »…«, „…“, “…”, "…"). A short
+  «word» no longer turns the running text up to the next guillemet into an "unclear quote", and parts of the review's
+  own question are not checked as quotes.
+- **"For all: copy from …" for duplicates** picks the copy in the corpus among equally good copies of that library,
+  as the rule does, instead of the first one found.
+- **Scans with a stamp line on every page** (e.g. "Kopie von subito e.V. …") are recognised as scans, so text
+  recognition (OCR) can start. A Zotero full text that consists only of such stamps is not indexed as text.
+
+## 1.2.6 – 2026-11-16
+
+### Added
+- **Updates from GitHub.** At start-up Zotivity asks GitHub for the latest release and offers to update (can be
+  switched off under Settings → Program & data). **Check for updates** asks at any time; **Versions on GitHub** opens
+  the releases page. Each release now carries the update information `zotivity-update.json`. The update source is
+  fixed: the free update-source field is gone, so nobody can slip in a foreign installer through the settings. GitHub
+  sees the computer's IP address, nothing else. This version still has to be installed by hand once.
+- **Project export keeps the PDF pages of citations.** A literature review imported on another computer opens each
+  citation on the right PDF page in Zotero even before the texts are indexed there – provided it is the same PDF file
+  (same attachment and checksum). Clicking citations needs neither the index nor an embedding model.
+
+### Fixed
+- **The list of texts in a corpus updates after a sync with Zotero.** Items newly added in Zotero now appear under
+  Open by themselves, also when the sync ran in the background. Before, they only appeared after "Reload" or a restart.
+- **Citations without a page find their page again after indexing.** For a text that was not read yet (e.g. after a
+  project import), Zotivity no longer remembers "no page" for good; it searches again once the text is indexed.
+
 ## 1.2.5 – 2026-11-15
 
 ### Changed

@@ -577,7 +577,14 @@ const ADVANCED = () => [
     ['retrieval.rerank', t('Neu sortieren'), 'select', { options: [['none', t('aus')], ['llm', t('mit dem Hilfsmodell')], ['cross_encoder', t('Cross-Encoder (lokal)')]] }],
     ['retrieval.rerank_candidates', t('Kandidaten für die Neusortierung'), 'int', { min: 5, max: 300 }],
     ['retrieval.context_token_budget', t('Kontext-Budget (Tokens)'), 'int', { min: 1000, max: 900000, step: 1000 }],
+    ['retrieval.auto_adjust', t('„Automatisch“ passt die Werte an die Zahl der Texte an'), 'bool', { help: t('Bei Umfang „Automatisch“ unter Fragen: Textstellen, Grenze je Text, Vielfalt und Nachbarabschnitte richten sich nach der Zahl der Texte im Suchbereich. Werte, die hier vom Preset abweichen, bleiben fest. Aus = immer die Werte von Preset und Experten.') }],
   ] },
+  { id: 'whole', title: t('Ganze Texte unter „Fragen“'), icon: 'file',
+    note: t('Bleiben die Texte im Suchbereich zusammen unter dieser Grenze, erhält das Sprachmodell die ganzen Texte mit Seitenangaben statt einzelner Textstellen (Umfang „Automatisch“ oder „Ganze Texte“). Es gilt die Grenze des Anbieters, der die Antworten schreibt; 0 = nie. Lokale Modelle über Ollama haben oft nur 8 000–32 000 Tokens Kontext.'),
+    fields: ['anthropic', 'openai', 'gemini', 'mistral', 'deepseek', 'ollama', 'openai_compatible'].map(id =>
+      [`retrieval.fulltext_limits.${id}`, t('{p}: ganze Texte bis (Tokens)', { p: providerLabel(id) }), 'int', { min: 0, max: 2000000, step: 5000 }]).concat([
+      ['retrieval.stage_model', t('Notizen beim Lesen in Etappen'), 'select', { options: [['helper', t('Hilfsmodell')], ['main', t('Hauptmodell')]],
+        help: t('Umfang „In Etappen“ liest Texte über der Grenze kapitelweise. Das Hilfsmodell ist günstiger, das Hauptmodell gründlicher. Die Etappen richten sich nach der Grenze dieses Modells (höchstens 40 000 Tokens je Etappe).') }]]) },
   { id: 'llm', title: t('Sprachmodell'), icon: 'ai', fields: [
     ['llm.temperature', t('Temperatur'), 'float', { min: 0, max: 2, step: 0.1, nullable: true, help: t('Leer = Standard des Modells. Neuere Claude-Modelle akzeptieren keine Temperatur.') }],
     ['llm.max_output_tokens', t('Max. Output-Token'), 'int', { min: 256, max: 128000, step: 1000 }],
@@ -780,13 +787,12 @@ function aboutTab() {
   return [
     card(t('Updates'), 'download', h('div', { class: 'stack' },
       h('div', { class: 'row' }, h('b', null, `Zotivity ${i.version || ''}`), h('span', { class: 'spacer' }),
-        btn(t('Nach Updates suchen'), { size: 'sm', icon: 'refresh', busy: s.checking, disabled: !state.settings.update_url, why: t('Zuerst eine Update-Quelle angeben.'), onClick: () => checkUpdates() })),
-      u && (!u.configured ? notice('info', t('Keine Update-Quelle eingetragen.'))
-        : u.available ? notice('success', h('span', null, h('b', null, t('Version {v} ist verfügbar.', { v: u.latest })), u.notes ? h('div', { class: 'small' }, u.notes) : null),
+        i.releases_url && btn(t('Versionen auf GitHub'), { size: 'sm', kind: 'ghost', icon: 'external', onClick: () => api.openExternal(i.releases_url) }),
+        btn(t('Nach Updates suchen'), { size: 'sm', icon: 'refresh', busy: s.checking, onClick: () => checkUpdates() })),
+      u && (u.available ? notice('success', h('span', null, h('b', null, t('Version {v} ist verfügbar.', { v: u.latest })), u.notes ? h('div', { class: 'small' }, u.notes) : null),
           h('div', { class: 'notice-actions' }, btn(t('Jetzt aktualisieren'), { size: 'sm', kind: 'primary', icon: 'download', onClick: () => installUpdate(u) })))
           : notice('info', t('Zotivity ist aktuell ({v}).', { v: u.current }))),
-      field(t('Update-Quelle'), textInput({ value: state.settings.update_url, placeholder: t('https://…/zotivity-update.json  oder  \\\\server\\freigabe\\zotivity-update.json'),
-        onChange: v => set('update_url', v.trim()) }), { help: t('Adresse der Datei zotivity-update.json, die beim Erstellen des Installers entsteht (HTTPS oder Datei-/Netzwerkpfad).') }),
+      h('p', { class: 'muted small' }, t('Neue Versionen erscheinen auf GitHub. Zotivity fragt dort nach der neuesten Version; dabei sieht GitHub die IP-Adresse dieses Rechners, sonst nichts. Installiert wird nur mit passender Prüfsumme und erst nach Bestätigung.')),
       toggle({ checked: state.settings.check_updates_on_start, label: t('Beim Start nach Updates suchen'), onChange: v => set('check_updates_on_start', v) }))),
     card(t('Index'), 'index', h('div', { class: 'stats-row' },
       stat(t('Einträge'), fmtInt(x.items)), stat(t('Dateien'), fmtInt(x.attachments)), stat(t('Abschnitte'), fmtInt(x.chunks)),

@@ -232,6 +232,15 @@ function queueHint(title) {
 }
 
 // ------------------------------------------------------------------ Rechtes Panel: Texte des Korpus
+// Fragen zu einem Text: neuer Chat, Suchbereich nur dieser Text, Umfang automatisch (ganzer Text, wenn er passt)
+function askText(e) {
+  const ask = ui('ask', {});
+  if (ask.busy) { toast(t('Unter „Fragen“ läuft noch eine Antwort.'), 'warning'); return; }
+  Object.assign(ask, { scope: { label: e.title || e.citation, filters: { item_keys: [`${e.lib}:${e.item_key}`] } },
+    scopeMode: 'auto', chatId: null, messages: [], draft: '' });
+  navigate('ask');
+}
+
 function docList(title, entries, kind, open, extra = null) {
   const s = st();
   const f = s.docsFilter.trim().toLowerCase();
@@ -250,6 +259,7 @@ function docList(title, entries, kind, open, extra = null) {
           e.copy_from ? ` · ${t('Kopie aus {lib} (Dublette)', { lib: e.copy_from })}` : '',
           kind === 'current' && extra ? ` · ${extra.step}` : '')),
       kind === 'problems' && e.error ? h('div', { class: 'doc-item-error' }, `${statusText(e.status)}: ${e.error}`) : null,
+      kind === 'indexed' && e.item_key ? iconBtn('chat', t('Diesen Text befragen'), () => askText(e)) : null,
       e.pdf ? iconBtn('pdf', t('PDF in Zotero öffnen'), () => api.openExternal(e.pdf)) : null)),
     shown.length > 500 ? h('p', { class: 'muted small pad-x' }, t('… und {n} weitere – Filter verwenden.', { n: fmtInt(shown.length - 500) })) : null)
       : h('p', { class: 'muted small pad-x' }, f ? t('Keine Treffer für den Filter.') : t('Keine.')));
@@ -275,8 +285,12 @@ function documentsPanel(running) {
   const c = state.corpora.find(x => x.id === s.corpus);
   if (!c) return h('aside', { class: 'index-panel', ...paneProps('index', INDEX_PANE) }, h('p', { class: 'muted pad' }, t('Noch kein Korpus.')), splitter('index', { def: INDEX_PANE, min: 260, max: 760, side: 'right' }));
   if (s.docsFor !== c.id) {
-    s.docsFor = c.id; s.docs = null;
+    s.docsFor = c.id; s.docs = null; s.docsGen = state.catalogGen;
     api.get(`/api/corpora/${c.id}/documents`).then(d => { if (st().docsFor === c.id) { st().docs = d; update(); } }).catch(() => {});
+  } else if (s.docsGen !== state.catalogGen) {
+    // Nach einem Abgleich mit Zotero oder einer Indexierung (auch im Hintergrund): neu laden, ohne die Liste zu leeren
+    s.docsGen = state.catalogGen;
+    refreshDocs();
   }
   const d = s.docs;
   // Der Text, an dem gerade gearbeitet wird, steht oben unter „In Arbeit“ – nicht schon unter „Indexiert“
@@ -299,12 +313,13 @@ function documentsPanel(running) {
           oninput: e => { s.docsFilter = e.target.value; update(); } })),
         iconBtn('refresh', t('Neu laden'), () => { s.docsFor = null; update(); }))),
     h('div', { class: 'index-panel-body' }, d === null ? h('div', { class: 'pad' }, spinner(16)) : [
+      // Was noch zu tun ist, oben: Offen und Probleme, dann Einzubetten und Zu aktualisieren, zuletzt Indexiert
       groups.current.length ? docList(t('In Arbeit'), groups.current, 'current', true, curInfo) : null,
-      docList(d.model ? t('Indexiert (mit {m} durchsuchbar)', { m: d.model }) : t('Indexiert'), groups.indexed, 'indexed', true),
-      groups.to_embed.length ? docList(t('Einzubetten (für {m})', { m: d.model || '' }), groups.to_embed, 'to_embed', groups.to_embed.length < 200) : null,
-      groups.refresh.length ? docList(t('Zu aktualisieren (durchsuchbar, wird neu gelesen)'), groups.refresh, 'refresh', false) : null,
       docList(t('Offen (wird beim nächsten Lauf gelesen)'), groups.pending, 'pending', groups.pending.length > 0 && groups.pending.length < 200),
       docList(t('Probleme (ohne Text oder Fehler)'), groups.problems, 'problems', groups.problems.length > 0),
+      groups.to_embed.length ? docList(t('Einzubetten (für {m})', { m: d.model || '' }), groups.to_embed, 'to_embed', groups.to_embed.length < 200) : null,
+      groups.refresh.length ? docList(t('Zu aktualisieren (durchsuchbar, wird neu gelesen)'), groups.refresh, 'refresh', false) : null,
+      docList(d.model ? t('Indexiert (mit {m} durchsuchbar)', { m: d.model }) : t('Indexiert'), groups.indexed, 'indexed', true),
     ]),
     splitter('index', { def: INDEX_PANE, min: 260, max: 760, side: 'right' }));
 }

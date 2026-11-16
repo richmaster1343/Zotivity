@@ -140,10 +140,11 @@ fragt Zotivity, ob im Hintergrund weitergearbeitet werden soll. Startet das Zote
 Fenster im Hintergrund und endet einige Minuten nach Zotero; «Zotivity öffnen» in Zotero zeigt das Fenster.
 Beenden jederzeit unter *Einstellungen → Programm & Daten*.
 
-**Updates:** Unter *Einstellungen → Programm & Daten* eine Update-Quelle eintragen – HTTPS-Adresse oder Netzwerkpfad
-zur Datei `zotivity-update.json`, die beim Build neben dem Installer entsteht. Zotivity prüft beim Start, lädt den
-Installer, kontrolliert die SHA-256-Prüfsumme, installiert unbeaufsichtigt und startet neu. Einstellungen, Index,
-Korpora und Schlüssel bleiben erhalten (auch bei der Deinstallation).
+**Updates:** Zotivity fragt beim Start auf GitHub nach der neuesten Version (Datei `zotivity-update.json` im neuesten
+Release; abschaltbar unter *Einstellungen → Programm & Daten*). GitHub sieht dabei die IP-Adresse, sonst nichts. Auf
+Bestätigung lädt Zotivity den Installer, kontrolliert die SHA-256-Prüfsumme, installiert unbeaufsichtigt und startet
+neu. Einstellungen, Index, Korpora und Schlüssel bleiben erhalten (auch bei der Deinstallation). Die Update-Quelle ist
+fest; nur für Tests nennt die Umgebungsvariable `ZOTIVITY_UPDATE_URL` eine andere.
 
 **Installer bauen:** `.\packaging\build.ps1` (Tests → Symbole → PyInstaller → Selbsttest der EXE inkl. Fenster →
 Inno Setup 6 → Update-Manifest). Mit `-UpdateBaseUrl https://…` steht die Download-Adresse im Manifest.
@@ -207,7 +208,11 @@ der Breite ziehen (Doppelklick: Standardbreite), und im Programmfenster lässt s
 4. **Index:** aktueller Text, Fortschritt, Restzeit, nächste und zuletzt verarbeitete Texte, Probleme (z. B. Scans ohne
    Text). Eine **Warteschlange** nimmt weitere Läufe auf, solange einer läuft. Wahlweise automatisch im Hintergrund.
 5. **Fragen:** Antwort mit anklickbaren Belegen `[3]` (Vorschau mit «PDF öffnen (S. x)» und «In Zotero zeigen»);
-   die Textstellen stehen darunter, jeweils mit **Relevanz**. «Nur Textstellen» sucht ohne LLM.
+   die Textstellen stehen darunter, jeweils mit **Relevanz**. «Nur Textstellen» sucht ohne LLM. Passen die Texte im
+   Suchbereich ins Sprachmodell, erhält es die **ganzen Texte** mit Seitenangaben (Umfang «Automatisch», «Textstellen»,
+   «Ganze Texte»; «Diesen Text befragen» im Korpus). Sonst passt «Automatisch» die Suche an die Zahl der Texte an;
+   Überblicksfragen erhalten eine Karte je Text. Lange Texte lassen sich «In Etappen» kapitelweise lesen. Eine
+   Planzeile zeigt vor dem Senden, wie viel Text verwendet wird.
 
 Tastatur: Strg+1–5 Ansichten des Projekts, Strg+6 Suchen, Strg+7 CSL-Editor, Strg+8 Index, Strg+, Einstellungen, F1 Hilfe, Strg+P Projekt wechseln.
 Darstellung: System, Hell, Grau, Dunkel (die Titelleiste des Fensters passt sich an).

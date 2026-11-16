@@ -137,6 +137,7 @@ The **Project** view lists all projects on the left, one below the other; **New 
 - **New project** creates an empty project (name, description, colour).
 - The **⋯** menu on a project tile offers Edit, Move up/down, Export as file, Duplicate, Archive and Delete.
 - **Export as file** saves the project as a `.zoty` file (`.zllm` files from earlier versions can still be imported) – with corpus definitions, chats, literature reviews and evaluation sheets, but without the index. Use it to back up a project or move it to another computer. **Import** loads such a file; missing collections are reported.
+- Literature reviews take the **PDF pages of their citations** along: on the target computer a citation opens the right page in Zotero even before the texts are indexed there – provided it is the same PDF file. Clicking citations needs neither the index nor an embedding model. Zotivity must however synchronise the libraries with Zotero once, and the items must exist in your own Zotero: for groups, membership is enough; items from "My Library" are only found by the same person on another computer.
 - A corpus can belong to several projects. When a project is deleted, corpora that are used elsewhere are kept.
 
 ### Archive
@@ -195,6 +196,8 @@ The vectors belong to their model. After a model switch only step 2 is needed ("
 While reading, Zotivity determines the **printed page numbers** from headers and footers (volume, year and issue numbers are filtered out, the page range from Zotero serves as a cross-check) and remembers where a new page begins inside a section. If no numbering can be found, the source counts as "without page numbers" (n.p., German "o. S.").
 
 At the top there is always the **Index status** across all corpora: the active embedding model, texts, indexed (with the addition "of which … to refresh"), to embed, open, problems and searchable passages, plus when the last check took place and when the next automatic check is due. Texts = indexed + to embed + open + problems. The button states what a run does, e.g. **Index: read 9 · re-read 44 · embed 2** – one run does everything at once. If only vectors are missing, **Embed only** (or **Embed … for …**) embeds them with the estimated duration, without reading anything again. The **Corpora** table shows the same figures per corpus, "to refresh" as a small symbol next to the number of indexed texts; it is reloaded together with the status, also after a synchronisation in the background. With more than ten corpora it scrolls within itself instead of making the page longer.
+
+On the right, **Texts in the corpus** lists the texts of the selected corpus by state: indexed, to embed, to refresh, open and problems. The list reloads after every synchronisation with Zotero and after every indexing run, also when the synchronisation ran in the background; items newly added in Zotero thus appear under **Open** by themselves. The **Reload** arrow at the top fetches the list by hand at any time.
 
 During a run, the **Running indexing** card shows a progress ring with percentage at the top, the embedding model and the **estimated remaining time** ("approx. … left"). It is based on the speed of this run and becomes more accurate after the first texts; while part of it cannot be estimated yet, it reads "at least … left". Below follow "Text … of …" (how many to read and how many only to embed), the current text with page and passage progress, the next texts in this run and the texts finished last. The same ring with percentage and remaining time appears in the status bar. Three counts must be distinguished:
 
@@ -325,13 +328,45 @@ In **Ask** you put questions in your own words. Zotivity looks for matching pass
 
 At the top you choose the **knowledge corpora** – several are possible. Without a selection, all corpora of the project are searched. From the Zotero plugin you can also ask directly about a collection or a selection of items; it then appears as a chip, and the × returns to the corpora.
 
-Next to it you choose **Answer** or **Passages only** (shows the passages found without an answer from the language model – fast and free). The **preset** sets the search and answer values for a purpose all at once (fast, balanced, thorough). A dot indicates that values differ from the preset. The slider icon opens the **search options**: number of passages, maximum per text, research rounds and multi-query – for this session only.
+Next to it you choose **Answer** or **Passages only** (shows the passages found without an answer from the language model – fast and free). The **preset** sets the search and answer values for a purpose all at once (fast, balanced, thorough). A dot indicates that values differ from the preset. The slider icon opens the **search options**: number of passages, maximum per text (up to 50), research rounds and multi-query – for this session only. If you then change something under Settings → Expert or choose another preset, the session values no longer apply: what was set last wins.
+
+### Scope: whole texts or passages
+
+The **Scope** switch decides how much text the language model gets:
+
+- **Automatic** (default): if the texts in scope stay below the language model's limit together, it gets the **whole texts** with page marks, otherwise the best-matching passages. A question about a book or a few articles is thus answered from the whole text instead of a few excerpts.
+- **Passages**: always passages, with the values from the preset and the search options.
+- **Whole texts**: the whole texts. If they do not fit, the button is greyed out and the hint gives the reason, e.g. "Too much text: about 2.1 million tokens".
+- **In stages**: for texts above the limit (at most 5 texts). Zotivity splits the texts into stages, at chapter starts where possible (numbered headings such as "4.2 …", "Chapter 3"). For each stage a model writes notes on the question with page numbers, then the main model answers the question from all notes. This is slower and needs more requests (one per stage, up to three at a time), but it is complete. The notes are listed, collapsed, below the answer. Whether the helper or the main model writes the notes is set under Expert ("Notes when reading in stages", default helper model); a stage is at most 40,000 tokens long. If the texts fit after all, Zotivity reads them whole. "Automatic" never chooses stages by itself, but the plan line suggests them ("More complete: read in stages").
+
+The limit per provider is under Settings → Expert → "Whole texts under Ask" (defaults: Claude, OpenAI and Gemini 100,000 tokens, Mistral 50,000, DeepSeek 40,000, Ollama 6,000, compatible servers 8,000; 0 = never). Local models often have only 8,000–32,000 tokens of context. The texts come first in the request, so follow-up questions in the same chat use the provider's cache (prompt caching) and cost much less. A chat with whole texts stays with them. Citations read [1, p. 64] in the text and become numbers after the answer; each leads to the cited page, and **Open PDF** jumps there.
+
+A question from Zotero (right-click → Zotivity → Ask) uses "Automatic". In **Index → Texts in the corpus**, the speech-bubble icon next to a text starts a question about exactly this text (**Ask this text**).
+
+With "Automatic", the values for passages follow the number of texts in scope:
+
+| Texts | Automatic |
+|---|---|
+| 1–3 | whole texts if they fit; otherwise no limit per text, no diversity penalty (MMR 1), neighbouring sections, as many passages as fit the context budget |
+| 4–30 | more passages (up to 25), 3–4 per text |
+| 31–200 | 2 per text, more passages (up to 40) and more candidates, so that as many texts as possible appear |
+| over 200 | as above, plus a hint to narrow the scope |
+
+Values you have deliberately set differently from the preset under Expert, and session values, stay as they are. If you always want fixed values, switch off "“Automatic” adjusts the values to the number of texts" under Expert.
+
+Above the input field, the **plan line** shows what happens when you send, e.g. "Whole texts · 1 text · about 70,000 tokens" or "Automatic · 25 passages, at most 4 per text · 12 texts in scope · adjusted" (the tooltip lists the adjusted values). Active session values appear there with **Reset**. Below each answer, the **Basis** line says what the answer rests on, e.g. "Basis: 18 passages from 7 of 100 texts" or "Basis: whole text".
+
+### Question type: overview with one card per text
+
+Together with the multi-query search, the helper model classifies the question: **Detail** (a question about content), **Overview** (overview or comparison across the texts, e.g. which methods or samples the studies use) or **Evidence** (looking for evidence for a statement). The plan line shows the type detected last; **Question type** lets you set it.
+
+For an overview question about more than three texts, the language model gets a short **card** per text instead of passages: author, year, title, type and venue, abstract and – where one exists – the evaluation sheet from a literature review. About 300 tokens per text; 100 texts are about 30,000 tokens, and every text appears (newest first if the budget runs out). For details from inside the texts, choose the question type "Detail" or ask single texts.
 
 ### How the search works
 
 1. The helper model phrases several search queries in German and English (**multi-query**). They can be expanded above the answer.
 2. Each query searches by meaning (embeddings) and by keyword (BM25); the rankings are merged.
-3. Similar passages are thinned out in favour of variety, with at most a few per text.
+3. Similar passages are thinned out in favour of variety, with at most a few per text (with "Automatic" depending on the number of texts, see above).
 4. Optionally, **research rounds** check whether aspects are missing and search specifically for them; **re-ranking** reorders the candidates with the helper model or a local cross-encoder.
 
 ### Answer and citations
@@ -509,7 +544,9 @@ On first start the program window adapts to the screen and afterwards remembers 
 
 ### Updates
 
-If an update source is entered, Zotivity checks for new versions at start-up. **Update now** downloads the installer, quits Zotivity and restarts it after installation. Settings, index, corpora and keys are kept.
+New versions are published on GitHub. At start-up Zotivity asks there for the latest version and reports a new one a few seconds later; **Check for updates** asks at any time. **Update now** downloads the installer, checks its checksum (SHA-256), quits Zotivity and restarts it after installation. Settings, index, corpora and keys are kept. **Versions on GitHub** opens the page with all versions and their changes.
+
+The request goes to github.com; GitHub sees the computer's IP address, nothing else. If you do not want this, switch off **Check for updates at start-up**. The update source is fixed and cannot be changed – so nobody can slip in a foreign installer through the settings.
 
 ## Privacy and data
 
@@ -517,6 +554,7 @@ If an update source is entered, Zotivity checks for new versions at start-up. **
 - With a local embedding model (built-in or Ollama), the texts do not leave the computer during indexing. With a cloud embedding, all passages are sent to the provider. The built-in runtime only accepts requests from Zotivity (random key, 127.0.0.1 only) and never accesses the network; Hugging Face is only contacted for downloads at the push of a button and for the name search.
 - When asking and for the literature review, the passages found or the texts of the selection are sent to the provider of the language model. With Ollama as language model everything stays local.
 - **Search** works entirely without a language model.
+- At start-up Zotivity asks GitHub for a new version (can be switched off under Settings → Program & data). Only the request itself goes to GitHub, no data from Zotivity.
 - API keys are stored encrypted in the operating system's credential store.
 - Zotivity changes Zotero only with write access and only on your instruction: notes for evaluation sheets, collections for the literature review.
 

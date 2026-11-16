@@ -138,6 +138,7 @@ Die Ansicht **Projekt** zeigt links alle Projekte untereinander; oben stehen **N
 - **Neues Projekt** legt ein leeres Projekt an (Name, Beschreibung, Farbe).
 - Das Menü **⋯** auf einer Projektkachel bietet Bearbeiten, Nach oben/unten, Als Datei exportieren, Duplizieren, Archivieren und Löschen.
 - **Als Datei exportieren** speichert das Projekt als `.zoty`-Datei (`.zllm`-Dateien früherer Versionen lassen sich weiter importieren) – mit Korpus-Definitionen, Chats, Forschungsständen und Auswertungsblättern, aber ohne Index. So lässt sich ein Projekt sichern oder auf einen anderen Rechner bringen. **Importieren** lädt eine solche Datei; fehlende Sammlungen werden gemeldet.
+- Forschungsstände nehmen die **PDF-Seiten ihrer Belege** mit: Am Ziel öffnet ein Beleg die richtige Seite in Zotero, auch bevor die Texte dort indexiert sind – sofern es dieselbe PDF-Datei ist. Zum Anklicken der Belege braucht es weder Index noch Embedding-Modell. Zotivity muss die Bibliotheken aber einmal mit Zotero abgleichen, und die Einträge müssen im eigenen Zotero vorhanden sein: Bei Gruppen genügt die Mitgliedschaft; Einträge aus «Meine Bibliothek» findet nur dieselbe Person auf einem anderen Rechner.
 - Ein Korpus kann zu mehreren Projekten gehören. Beim Löschen eines Projekts bleiben Korpora, die auch anderswo verwendet werden, erhalten.
 
 ### Archiv
@@ -196,6 +197,8 @@ Die Vektoren gehören zum jeweiligen Modell. Nach einem Modellwechsel ist deshal
 Beim Lesen bestimmt Zotivity die **gedruckten Seitenzahlen** aus Kopf- und Fusszeilen (Jahrgang, Jahr und Heftnummer werden dabei herausgefiltert, die Seitenspanne aus Zotero dient als Gegenprobe) und merkt sich, wo innerhalb eines Abschnitts eine neue Seite beginnt. Findet sich keine Zählung, gilt die Quelle als „ohne Seitenzahlen“ (o. S.).
 
 Ganz oben steht immer der **Zustand des Index** über alle Korpora: das aktive Embedding-Modell, Texte, indexiert (mit dem Zusatz „davon … zu aktualisieren“), einzubetten, offen, Probleme und durchsuchbare Abschnitte, dazu wann zuletzt geprüft wurde und wann die nächste automatische Prüfung ansteht. Texte = indexiert + einzubetten + offen + Probleme. Der Knopf sagt, was ein Lauf tut, z. B. **Indexieren: 9 lesen · 44 neu einlesen · 2 einbetten** – ein Lauf erledigt alles auf einmal. Fehlen nur Vektoren, bettet **Nur einbetten** (bzw. **… für … einbetten**) mit der geschätzten Dauer ein, ohne etwas neu zu lesen. Die Tabelle **Korpora** zeigt dieselben Zahlen je Korpus, „zu aktualisieren“ als kleines Symbol neben der Zahl der indexierten Texte; sie wird zusammen mit dem Zustand nachgeladen, auch nach einem Abgleich im Hintergrund. Bei mehr als zehn Korpora scrollt sie in sich, statt die Seite zu verlängern.
+
+Rechts listet **Texte im Korpus** die Texte des gewählten Korpus nach Stand: indexiert, einzubetten, zu aktualisieren, offen und Probleme. Die Liste lädt nach jedem Abgleich mit Zotero und nach jeder Indexierung neu, auch wenn der Abgleich im Hintergrund lief; neu in Zotero aufgenommene Einträge erscheinen so von selbst unter **Offen**. Der Pfeil **Neu laden** oben holt die Liste jederzeit von Hand.
 
 Während eines Laufs zeigt die Karte **Laufende Indexierung** oben einen Fortschrittsring mit Prozent, das Embedding-Modell und die **geschätzte Restzeit** („noch ca. …“). Sie beruht auf dem Tempo dieses Laufs und wird nach den ersten Texten genauer; solange ein Teil noch nicht abschätzbar ist, steht „noch mindestens …“. Darunter folgen „Text … von …“ (wie viele zu lesen und wie viele nur einzubetten sind), der aktuelle Text mit Seiten- und Abschnittsfortschritt, die nächsten Texte dieses Laufs und die zuletzt fertigen Texte. Derselbe Ring mit Prozent und Restzeit steht in der Statusleiste. Drei Zählungen sind zu unterscheiden:
 
@@ -326,13 +329,45 @@ In **Fragen** stellen Sie Fragen in eigenen Worten. Zotivity sucht die passenden
 
 Oben wählen Sie die **Wissenskorpora** – mehrere sind möglich. Ohne Auswahl werden alle Korpora des Projekts durchsucht. Aus dem Zotero-Plugin lässt sich auch direkt eine Sammlung oder eine Auswahl von Einträgen befragen; sie erscheint dann als Chip, das × kehrt zu den Korpora zurück.
 
-Daneben wählen Sie **Antwort** oder **Nur Textstellen** (zeigt die gefundenen Textstellen ohne Antwort des Sprachmodells – schnell und kostenlos). Das **Preset** setzt die Such- und Antwortwerte für einen Zweck auf einmal (schnell, ausgewogen, gründlich). Ein Punkt zeigt, dass Werte vom Preset abweichen. Das Regler-Symbol öffnet die **Suchoptionen**: Zahl der Textstellen, höchstens je Text, Recherche-Runden und Mehrfachsuche – nur für diese Sitzung.
+Daneben wählen Sie **Antwort** oder **Nur Textstellen** (zeigt die gefundenen Textstellen ohne Antwort des Sprachmodells – schnell und kostenlos). Das **Preset** setzt die Such- und Antwortwerte für einen Zweck auf einmal (schnell, ausgewogen, gründlich). Ein Punkt zeigt, dass Werte vom Preset abweichen. Das Regler-Symbol öffnet die **Suchoptionen**: Zahl der Textstellen, höchstens je Text (bis 50), Recherche-Runden und Mehrfachsuche – nur für diese Sitzung. Ändern Sie danach etwas unter Einstellungen → Experten oder wählen ein anderes Preset, gelten die Sitzungswerte nicht mehr: Es gilt, was zuletzt eingestellt wurde.
+
+### Umfang: ganze Texte oder Textstellen
+
+Der Schalter **Umfang** legt fest, wie viel Text das Sprachmodell erhält:
+
+- **Automatisch** (Standard): Bleiben die Texte im Suchbereich zusammen unter der Grenze des Sprachmodells, erhält es die **ganzen Texte** mit Seitenangaben, sonst die passendsten Textstellen. So beantwortet Zotivity eine Frage zu einem Buch oder zu wenigen Artikeln aus dem ganzen Text statt aus wenigen Ausschnitten.
+- **Textstellen**: immer Textstellen, mit den Werten aus Preset und Suchoptionen.
+- **Ganze Texte**: die ganzen Texte. Passen sie nicht, ist der Knopf ausgegraut; der Hinweis nennt den Grund, z. B. „Zu viel Text: rund 2,1 Mio. Tokens“.
+- **In Etappen**: für Texte über der Grenze (höchstens 5 Texte). Zotivity teilt die Texte in Etappen, möglichst an Kapitelanfängen (nummerierte Überschriften wie „4.2 …“, „Kapitel 3“). Je Etappe schreibt ein Modell Notizen zur Frage mit Seitenangaben, dann beantwortet das Hauptmodell die Frage aus allen Notizen. Das ist langsamer und braucht mehr Aufrufe (eine je Etappe, bis zu drei gleichzeitig), ist aber vollständig. Die Notizen stehen eingeklappt unter der Antwort. Ob das Hilfs- oder das Hauptmodell die Notizen schreibt, steht unter Experten („Notizen beim Lesen in Etappen“, Vorgabe Hilfsmodell); eine Etappe ist höchstens 40 000 Tokens lang. Passen die Texte doch ganz, liest Zotivity sie ganz. „Automatisch“ wählt die Etappen nie von selbst, schlägt sie aber in der Planzeile vor („Vollständiger: in Etappen lesen“).
+
+Die Grenze steht je Anbieter unter Einstellungen → Experten → „Ganze Texte unter Fragen“ (Vorgaben: Claude, OpenAI und Gemini 100 000 Tokens, Mistral 50 000, DeepSeek 40 000, Ollama 6 000, kompatible Server 8 000; 0 = nie). Lokale Modelle haben oft nur 8 000–32 000 Tokens Kontext. Die Texte stehen am Anfang der Anfrage; Folgefragen im selben Chat nutzen deshalb den Zwischenspeicher des Anbieters (Prompt-Caching) und kosten deutlich weniger. Ein Chat mit ganzen Texten bleibt dabei. Die Belege lauten im Text [1, S. 64] und werden nach der Antwort zu Nummern; jede führt zur zitierten Seite, und **PDF öffnen** springt dorthin.
+
+Eine Frage aus Zotero (Rechtsklick → Zotivity → Fragen) nutzt „Automatisch“. In **Index → Texte im Korpus** startet das Sprechblasen-Symbol neben einem Text eine Frage zu genau diesem Text (**Diesen Text befragen**).
+
+Bei „Automatisch“ richten sich die Werte für Textstellen nach der Zahl der Texte im Suchbereich:
+
+| Texte | Automatisch |
+|---|---|
+| 1–3 | ganze Texte, wenn sie passen; sonst keine Grenze je Text, keine Vielfalt-Strafe (MMR 1), Nachbarabschnitte, so viele Stellen, wie ins Kontext-Budget passen |
+| 4–30 | mehr Stellen (bis 25), 3–4 je Text |
+| 31–200 | 2 je Text, mehr Stellen (bis 40) und mehr Kandidaten, damit möglichst viele Texte vorkommen |
+| über 200 | wie oben, dazu der Hinweis, den Suchbereich einzugrenzen |
+
+Werte, die Sie unter Experten bewusst vom Preset abweichend eingestellt haben, und Sitzungswerte bleiben stehen. Wer immer feste Werte will, schaltet unter Experten „„Automatisch“ passt die Werte an die Zahl der Texte an“ aus.
+
+Über dem Eingabefeld zeigt die **Planzeile**, was beim Senden geschieht, z. B. „Ganze Texte · 1 Text · rund 70 000 Tokens“ oder „Automatisch · 25 Textstellen, höchstens 4 je Text · 12 Texte im Suchbereich · angepasst“ (der Tooltip nennt die angepassten Werte). Aktive Sitzungswerte erscheinen dort mit **Zurücksetzen**. Unter jeder Antwort steht die **Grundlage**, z. B. „Grundlage: 18 Textstellen aus 7 von 100 Texten“ oder „Grundlage: ganzer Text“.
+
+### Frageart: Überblick mit einer Karte je Text
+
+Mit der Mehrfachsuche ordnet das Hilfsmodell die Frage ein: **Detail** (inhaltliche Einzelfrage), **Überblick** (Überblick oder Vergleich über den Bestand, z. B. welche Methoden oder Stichproben die Studien haben) oder **Belege** (Suche nach Belegen für eine Aussage). Die Planzeile zeigt die zuletzt erkannte Art; mit **Frageart** lässt sie sich festlegen.
+
+Bei einer Überblicksfrage über mehr als drei Texte erhält das Sprachmodell statt Textstellen von jedem Text eine kurze **Karte**: Autor, Jahr, Titel, Art und Ort der Veröffentlichung, Abstract und – wo es eines gibt – das Auswertungsblatt aus einem Forschungsstand. Rund 300 Tokens je Text; 100 Texte sind etwa 30 000 Tokens, und jeder Text kommt vor (die neuesten zuerst, falls das Budget nicht reicht). Für Einzelheiten aus dem Inneren der Texte die Frageart „Detail“ wählen oder einzelne Texte befragen.
 
 ### Wie gesucht wird
 
 1. Das Hilfsmodell formuliert mehrere Suchanfragen auf Deutsch und Englisch (**Mehrfachsuche**). Sie stehen aufklappbar über der Antwort.
 2. Jede Anfrage sucht nach Bedeutung (Embeddings) und nach Stichworten (BM25); die Ranglisten werden zusammengeführt.
-3. Ähnliche Textstellen werden zugunsten von Vielfalt ausgedünnt, höchstens wenige je Text.
+3. Ähnliche Textstellen werden zugunsten von Vielfalt ausgedünnt, höchstens wenige je Text (bei „Automatisch“ abhängig von der Zahl der Texte, siehe oben).
 4. Optional prüfen **Recherche-Runden**, ob Aspekte fehlen, und suchen gezielt nach; die **Neusortierung** ordnet die Kandidaten mit dem Hilfsmodell oder einem lokalen Cross-Encoder neu.
 
 ### Antwort und Belege
@@ -510,7 +545,9 @@ Das Programmfenster passt sich beim ersten Start dem Bildschirm an und merkt sic
 
 ### Updates
 
-Ist eine Update-Quelle eingetragen, sucht Zotivity beim Start nach neuen Versionen. **Jetzt aktualisieren** lädt den Installer, beendet Zotivity und startet es nach der Installation neu. Einstellungen, Index, Korpora und Schlüssel bleiben erhalten.
+Neue Versionen erscheinen auf GitHub. Beim Start fragt Zotivity dort nach der neuesten Version und meldet eine neue einige Sekunden später; **Nach Updates suchen** fragt jederzeit. **Jetzt aktualisieren** lädt den Installer, prüft seine Prüfsumme (SHA-256), beendet Zotivity und startet es nach der Installation neu. Einstellungen, Index, Korpora und Schlüssel bleiben erhalten. **Versionen auf GitHub** öffnet die Seite mit allen Versionen und ihren Änderungen.
+
+Die Abfrage geht an github.com; GitHub sieht dabei die IP-Adresse des Rechners, sonst nichts. Wer das nicht will, schaltet **Beim Start nach Updates suchen** aus. Die Update-Quelle ist fest und lässt sich nicht ändern – so kann niemand über die Einstellungen einen fremden Installer unterschieben.
 
 ## Datenschutz und Daten
 
@@ -518,6 +555,7 @@ Ist eine Update-Quelle eingetragen, sucht Zotivity beim Start nach neuen Version
 - Mit einem lokalen Embedding-Modell (eingebaut oder Ollama) verlassen die Texte den Rechner beim Indexieren nicht. Mit einem Cloud-Embedding gehen alle Textabschnitte an den Anbieter. Die eingebaute Laufzeit nimmt nur Anfragen von Zotivity an (zufälliger Schlüssel, nur 127.0.0.1) und greift nie aufs Netz zu; Hugging Face wird nur für Downloads per Knopf und für die Namenssuche angefragt.
 - Beim Fragen und beim Forschungsstand gehen die gefundenen Textstellen bzw. die Texte der Auswahl an den Anbieter des Sprachmodells. Mit Ollama als Sprachmodell bleibt alles lokal.
 - **Suchen** arbeitet ganz ohne Sprachmodell.
+- Beim Start fragt Zotivity auf GitHub nach einer neuen Version (abschaltbar unter Einstellungen → Programm & Daten). Dabei geht nur die Anfrage selbst an GitHub, keine Daten aus Zotivity.
 - API-Schlüssel liegen verschlüsselt im Anmeldeinformationsspeicher des Betriebssystems.
 - Zotivity verändert Zotero nur mit Schreibzugriff und nur auf Ihren Auftrag: Notizen für Auswertungsblätter, Sammlungen für den Forschungsstand.
 

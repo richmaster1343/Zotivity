@@ -38,6 +38,7 @@ from zotivity.index.store import SearchFilter
 from zotivity.keystore import SecretStoreError, get_store
 from zotivity.llm import LLMError, make_chat_model
 from zotivity.rag import AskOptions, ChatService, ReviewService
+from zotivity.rag.plan import make_plan
 from zotivity.rag.sources import build_sources
 from zotivity.research.api import install as install_research
 from zotivity.research.service import ResearchService
@@ -1795,6 +1796,14 @@ def create_app(engine: Engine | None = None, on_exit=None, exit_after_minutes: i
         hits = Searcher(engine).search(query, engine.make_filter(body.get("filters")), cfg, k=k)
         return {"sources": [s.as_dict() for s in build_sources(engine.store, hits, 0, 10**9)]}
 
+    @app.post("/api/chat/plan")
+    def chat_plan(body: dict = Body(...)):
+        """Suchplan vor dem Senden: ganze Texte oder Textstellen, Textmenge, Werte (Zeile über dem Eingabefeld)."""
+        provider = body.get("provider") or engine.settings.llm.provider
+        plan = make_plan(engine, engine.make_filter(body.get("filters")), body.get("scope_mode"), body.get("retrieval"),
+                         provider, bool(body.get("search_only")))
+        return plan.as_dict()
+
     @app.post("/api/chat")
     def chat_stream(body: dict = Body(...)):
         question = (body.get("question") or "").strip()
@@ -1803,7 +1812,8 @@ def create_app(engine: Engine | None = None, on_exit=None, exit_after_minutes: i
         opts = AskOptions(
             filters=body.get("filters") or {}, retrieval=body.get("retrieval") or {},
             provider=body.get("provider"), model=body.get("model"), search_only=bool(body.get("search_only")),
-            project_id=body.get("project_id"),
+            project_id=body.get("project_id"), scope=body.get("scope_mode") or "passages",
+            qtype=body.get("qtype") or "auto",
         )
 
         def localized(ev: dict) -> dict:
@@ -2101,11 +2111,11 @@ def create_app(engine: Engine | None = None, on_exit=None, exit_after_minutes: i
 
     @app.get("/api/app/info")
     def app_info():
-        from zotivity import paths
+        from zotivity import paths, updates
 
         return {"version": __version__, "data_dir": str(paths.data_dir()), "config_dir": str(paths.config_dir()),
                 "log_dir": str(paths.log_dir()), "keystore": keys.backend_info(), "desktop": on_open_ui is not None,
-                "frozen": bool(getattr(sys, "frozen", False))}
+                "frozen": bool(getattr(sys, "frozen", False)), "releases_url": updates.RELEASES_URL}
 
     @app.post("/api/ui/open")
     def ui_open(body: dict = Body(default={})):
@@ -2117,25 +2127,26 @@ def create_app(engine: Engine | None = None, on_exit=None, exit_after_minutes: i
 
     # -- Updates ------------------------------------------------------------------------------------
     @app.post("/api/update/check")
-    def update_check(body: dict = Body(default={})):
+    def update_check():
+        """Neueste Version auf GitHub. Die Quelle ist fest (updates.source) – weder Anfrage noch Einstellungen ändern sie."""
         from zotivity import updates
 
-        try:
-            return updates.check(body.get("url") or engine.settings.update_url)
+        try:  # GitHub nicht erreichbar oder kein Manifest im neuesten Release: UpdateError
+            return updates.check(updates.source())
         except updates.UpdateError as e:
             raise HTTPException(400, str(e)) from e
 
     @app.post("/api/update/install")
     def update_install(body: dict = Body(default={})):
         """Update installieren: {"version": bestätigte Version}. Installer und Prüfsumme stammen aus dem Manifest der
-        eingestellten Update-Quelle, nie aus der Anfrage – sonst könnte jedes Programm auf dem Rechner den Dienst eine
+        festen Update-Quelle, nie aus der Anfrage – sonst könnte jedes Programm auf dem Rechner den Dienst eine
         beliebige Datei herunterladen und starten lassen."""
         from zotivity import updates
 
         if engine.jobs.running("index"):
             raise HTTPException(409, "Bitte zuerst die laufende Indexierung abbrechen oder abwarten.")
         try:
-            offer = updates.offer(engine.settings.update_url, str((body or {}).get("version") or ""))
+            offer = updates.offer(updates.source(), str((body or {}).get("version") or ""))
             path = updates.download_installer(offer["installer"], offer["sha256"])
         except updates.UpdateError as e:
             raise HTTPException(400, str(e)) from e
