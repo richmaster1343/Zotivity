@@ -30,6 +30,7 @@ APP_NAME = "Zotivity"
 MUTEX_NAME = "ZotivityRunningMutex"  # vom Installer erkannt (AppMutex)
 CLI_COMMANDS = {"serve", "index", "search", "ask", "keys", "status", "plugin", "mcp", "--version", "-h", "--help"}
 OPEN_SCHEMES = ("zotero:", "http:", "https:", "mailto:")
+EXIT_GRACE_SECONDS = 8.0  # so lange darf das Beenden dauern, dann hart (das Setup wartet 15 s)
 
 
 # ---------------------------------------------------------------------------------- Hilfen
@@ -268,6 +269,17 @@ class JsApi:
             return False
         return open_external(p.as_uri()) if sys.platform != "win32" else (os.startfile(str(p)) or True)  # noqa: S606
 
+    def choose_folder(self, start=None):
+        """Ordner wählen (Sicherung in einen eigenen Ordner); None, wenn abgebrochen."""
+        import webview
+
+        kind = getattr(getattr(webview, "FileDialog", None), "FOLDER", None) or webview.FOLDER_DIALOG
+        begin = Path(str(start)) if start and Path(str(start)).is_dir() else Path.home()
+        result = self._host.window.create_file_dialog(kind, directory=str(begin))
+        if not result:
+            return None
+        return result if isinstance(result, str) else result[0]
+
     def _ask_save_path(self, filename: str) -> str | None:
         import webview
 
@@ -293,6 +305,7 @@ class DesktopHost:
         self.quit_when_idle = False
         self._pending_open: dict | None = None
         self.geometry: WindowGeometry | None = None
+        self._watchdog_started = False
 
     # -- Dienst --------------------------------------------------------------------------
     def start_server(self) -> None:
@@ -306,6 +319,9 @@ class DesktopHost:
         from zotivity.install_options import take_installer_choice
 
         take_installer_choice(self.engine.settings_store)  # «Beim Start nach Updates suchen» aus dem Setup
+        from zotivity.backup import schedule_startup_backup
+
+        schedule_startup_backup(self.engine)  # Sicherung in den gewählten Ordner, falls fällig
         cfg = self.engine.settings.server
         app = create_app(self.engine, on_exit=self.quit, exit_after_minutes=self.exit_with_zotero,
                          on_open_ui=self.show, on_idle_exit=self.quit_if_hidden)
@@ -437,9 +453,44 @@ class DesktopHost:
 
         if self.geometry:
             self.geometry.save()
+        self._cancel_jobs()
         if self.server:
             self.server.should_exit = True
         clear_state()
+        self._exit_watchdog()
+
+    def _cancel_jobs(self) -> None:
+        """Beim Beenden laufende Aufträge abbrechen: Sonst wartet Python beim Beenden, bis z. B. alle anstehenden
+        Beschreibungen von Abbildungen fertig sind – minutenlang, und das Setup meldet „Zotivity läuft noch“."""
+        if not self.engine:
+            return
+        try:
+            self.engine.index_queue.clear()
+            for j in self.running_jobs():
+                self.engine.jobs.cancel(j["id"])
+        except Exception:  # noqa: BLE001 - Beenden geht vor
+            log.exception("Aufträge beim Beenden nicht abgebrochen")
+
+    def _exit_watchdog(self, seconds: float = EXIT_GRACE_SECONDS) -> None:
+        """Hängt das Beenden trotzdem (eine Anfrage an ein Sprachmodell läuft noch), nach einigen Sekunden hart beenden.
+        Hilfsprozesse (eingebaute Laufzeit) hängen an einem Windows-Job-Objekt und enden mit."""
+        if self._watchdog_started:
+            return
+        self._watchdog_started = True
+
+        def force() -> None:
+            log.warning("Zotivity beendet sich nicht von selbst – wird nach %s s hart beendet.", seconds)
+            try:
+                if self.engine:
+                    self.engine.shutdown()
+            except Exception:  # noqa: BLE001
+                pass
+            logging.shutdown()
+            os._exit(0)
+
+        timer = threading.Timer(seconds, force)
+        timer.daemon = True
+        timer.start()
 
     def _watch(self) -> None:
         """Nach „im Hintergrund weiterlaufen“: beenden, sobald nichts mehr läuft."""

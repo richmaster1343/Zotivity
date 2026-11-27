@@ -245,13 +245,38 @@ Diese Einstellungen stehen unter **Einstellungen → Index**; das Zahnrad oben i
 - **Texte in einem eigenen Prozess lesen**: Eine defekte PDF, die das Lesen abstürzen lässt oder hängt, wird nach dem Zeitlimit als Fehler markiert – der Lauf geht weiter.
 - **Rechner wach halten** verhindert den Ruhezustand während der Indexierung.
 - Fällt der Embedding-Dienst kurz aus (z. B. Ollama neu gestartet), wartet Zotivity eine einstellbare Zeit, statt abzubrechen.
-- **Sicherung des Index**: nach Indexierläufen höchstens alle 12 Stunden; die zwei neuesten bleiben.
+- **Sicherung des Index**: nach Indexierläufen höchstens alle 12 Stunden; die zwei neuesten bleiben. Sie liegt im Datenordner, also auf demselben Laufwerk.
+- **Sicherung in einen eigenen Ordner** (Einstellungen → Index): kopiert Index, Projekte, Chats, Forschungsstände, Recherchen (`research.db`), Einstellungen und eigene Zitierstile in einen Ordner Ihrer Wahl, z. B. in switchdrive, OneDrive oder auf einen USB-Stick. Automatisch täglich oder wöchentlich (nach Indexierläufen und kurz nach dem Start) oder nur von Hand mit **Jetzt sichern**; die neuesten drei bleiben (einstellbar). Jede Sicherung ist ein eigener Unterordner „Zotivity-Sicherung-Datum-Zeit“; andere Dateien im Ordner fasst Zotivity nicht an. API-Schlüssel gehören nicht dazu, sie bleiben im Schlüsselspeicher. Wiederherstellen: Zotivity beenden und die Dateien einer Sicherung in den Datenordner kopieren (Anleitung in `WIEDERHERSTELLEN.txt` jeder Sicherung).
 
-### Texte ohne Text
+### Texte ohne Text oder mit Fehler
 
-„Ohne Text“ sind meist Scans ohne Textebene. Abhilfe: unter **Einstellungen → Experten → Einlesen** die Texterkennung (OCR) einschalten (benötigt eine Tesseract-Installation) oder die PDF mit Texterkennung neu speichern. Danach **Erneut versuchen**.
+„Ohne Text“ sind meist Scans ohne Textebene. Abhilfe: unter **Einstellungen → Experten → Einlesen** die Texterkennung (OCR) einschalten (benötigt eine Tesseract-Installation: Zotivity sucht `tesseract.exe` im Suchpfad und unter „Programme\Tesseract-OCR“) oder die PDF mit Texterkennung neu speichern. Danach **Erneut versuchen**.
+
+Ein normaler Lauf („Indexieren“) liest Texte ohne Text oder mit Fehler nicht neu, sonst würde jeder Lauf dieselben Dateien erneut versuchen. Bleiben solche Texte im Bereich des Laufs, sagt die Meldung am Ende das („Alle übrigen Texte sind aktuell. Nicht erneut gelesen – mit Fehler oder ohne Text: 16.“) und bietet **Erneut versuchen** an. Weitere Wege:
+
+- **Index → Korpora:** Das Symbol ↻ neben „Indexieren“ erscheint bei einem Korpus mit Problemen und liest nur dessen Problemtexte nochmals.
+- **Korpora → „…“ eines Korpus → Fehlerhafte Texte erneut versuchen**.
+- Die Karte **Texte ohne Text oder mit Fehler** unter Index: **Erneut versuchen** für alle Korpora.
+
+Nach einem **Update** liest der erste Lauf Texte mit Fehler von selbst einmal neu, denn die neue Version kann den Fehler behoben haben. Texte ohne Text gehören nicht dazu. Scheitert ein Text wieder, bleibt er bis zum nächsten Update stehen.
 
 Die Liste der Probleme führt jeden Anhang einzeln auf. Hat ein Eintrag mehrere Anhänge, kann er trotz eines Problems durchsuchbar sein – die Suche zeigt dann „indexiert“.
+
+### Abbildungen
+
+Unter **Einstellungen → Index → Abbildungen** lassen sich Abbildungen in PDFs nutzen. Beim Einlesen findet Zotivity eingebettete Bilder und gezeichnete Diagramme, die gross genug sind, mit ihrer Bildunterschrift („Abbildung 3 …“, „Fig. 2 …“) und dem Text in der Grafik (Achsen, Legende). Logos, Zierrat und ganze Scan-Seiten zählen nicht. **Beschreiben** lässt ein Sprachmodell (Hilfs- oder Hauptmodell) jede Abbildung in wenigen Sätzen beschreiben – mit dem Bild, wenn das Modell Bilder versteht, sonst nur aus Bildunterschrift und Text; vorher zeigt Zotivity die geschätzten Token. Die Beschreibungen werden mit Seite durchsuchbar und erscheinen unter „Fragen“ als **Abbildung (maschinell beschrieben)**; das Modell zitiert sie nicht wörtlich. Zahlen aus Diagrammen können falsch gelesen sein – im Zweifel die Abbildung im PDF ansehen. Schon eingelesene PDFs durchsucht **In eingelesenen PDFs suchen** (liest nur, bettet den Text nicht neu ein). Die Beschreibungen hängen an der Datei: Wird dieselbe Datei neu eingelesen, bleiben sie und kosten nichts.
+
+**So beginnen** – am besten vor dem ersten Indexieren, dann findet Zotivity die Abbildungen gleich beim Einlesen:
+
+1. Unter **Einstellungen → Sprachmodelle** ein Modell wählen, das Bilder versteht; meist reicht das Hilfsmodell. Das können z. B. Claude, GPT und Gemini, viele OpenAI-kompatible Server und lokal ein Vision-Modell über Ollama (dann bleiben die Bilder auf dem Rechner). Die **Denktiefe** auf einen Wert stellen, den der Server kennt – manche kennen kein „mittel“, nur „niedrig“, „hoch“ und höher.
+2. Unter **Einstellungen → Index → Abbildungen** einschalten und wählen: **Modell** (Hilfs- oder Hauptmodell), **Höchstens je Text** (Vorgabe 40; Abbildungen mit Bildunterschrift zuerst), **Bild mitschicken** (aus: nur Bildunterschrift und Text in der Grafik gehen ans Modell – günstiger, aber ungenauer) und auf Wunsch **Nach jedem Indexieren automatisch beschreiben**.
+3. Korpus indexieren. Beschrieben wird automatisch nach dem Lauf oder mit **Beschreiben**. Ist schon indexiert: einschalten und **In eingelesenen PDFs suchen**.
+
+**Kosten:** Je Abbildung rechnet Zotivity mit rund 1700 Input-Token mit Bild (900 ohne) und 150–400 Output-Token; 1000 Abbildungen sind also rund 1,7 Mio. Input-Token. Mit einem lokalen Modell oder einem Hochschulserver ohne Abrechnung kostet das nichts.
+
+Die Zahlen auf der Karte (z. B. „250 Abbildungen in 40 Texten gefunden, 0 beschrieben“) gelten für den **ganzen Index**, also für alle Korpora. Mit **Bereich** wählen Sie einen einzelnen Korpus; Zahlen und **Beschreiben** gelten dann nur für dessen Texte. „In eingelesenen PDFs suchen“ geht immer durch den ganzen Index.
+
+**Nach jedem Indexieren automatisch beschreiben** (aus als Standard): Nach jedem Indexierlauf – von Hand, aus der Warteschlange, im Hintergrund oder aus Zotero – und nach „In eingelesenen PDFs suchen“ beschreibt ein eigener Auftrag die noch offenen Abbildungen, im ganzen Index. Das Indexieren wartet nicht darauf. **Höchstens je Lauf** (Vorgabe 200) begrenzt die Menge; Abbildungen mit Bildunterschrift kommen zuerst, der Rest folgt beim nächsten Lauf. Da keine Rückfrage mit Schätzung erscheint, fallen bei kostenpflichtigen Modellen ohne weitere Bestätigung Kosten an. Fehlt der Schlüssel für das gewählte Modell, steht das im Bericht des Laufs. Gelingt bei einem automatischen Auftrag keine einzige Beschreibung (Modell nicht erreichbar), pausiert das automatische Beschreiben sechs Stunden; „Beschreiben“ von Hand hebt die Pause auf.
 
 ### Webseiten-Schnappschüsse
 
@@ -359,9 +384,9 @@ Werte, die Sie unter Experten bewusst vom Preset abweichend eingestellt haben, u
 
 ### Frageart: Überblick mit einer Karte je Text
 
-Mit der Mehrfachsuche ordnet das Hilfsmodell die Frage ein: **Detail** (inhaltliche Einzelfrage), **Überblick** (Überblick oder Vergleich über den Bestand, z. B. welche Methoden oder Stichproben die Studien haben) oder **Belege** (Suche nach Belegen für eine Aussage). Die Planzeile zeigt die zuletzt erkannte Art; mit **Frageart** lässt sie sich festlegen.
+Mit der Mehrfachsuche ordnet das Hilfsmodell die Frage ein: **Detail** (inhaltliche Frage, auch ein Vergleich von Begriffen, Definitionen, Theorien oder Positionen), **Überblick** (Frage nach dem Bestand, z. B. welche Texte, Methoden, Stichproben oder Ergebnisse es gibt) oder **Belege** (Suche nach Belegen für eine Aussage). Die Planzeile zeigt die zuletzt erkannte Art; mit **Frageart** lässt sie sich festlegen.
 
-Bei einer Überblicksfrage über mehr als drei Texte erhält das Sprachmodell statt Textstellen von jedem Text eine kurze **Karte**: Autor, Jahr, Titel, Art und Ort der Veröffentlichung, Abstract und – wo es eines gibt – das Auswertungsblatt aus einem Forschungsstand. Rund 300 Tokens je Text; 100 Texte sind etwa 30 000 Tokens, und jeder Text kommt vor (die neuesten zuerst, falls das Budget nicht reicht). Für Einzelheiten aus dem Inneren der Texte die Frageart „Detail“ wählen oder einzelne Texte befragen.
+Bei einer Überblicksfrage über mehr als drei Texte erhält das Sprachmodell von jedem Text eine kurze **Karte** und dazu die passendsten **Textstellen** aus den Volltexten (etwa ein Drittel des Umfangs). Die Karte enthält Autor, Jahr, Titel, Art und Ort der Veröffentlichung, Abstract und – wo es eines gibt – das Auswertungsblatt aus einem Forschungsstand. Rund 300 Tokens je Text; 100 Texte sind etwa 30 000 Tokens, und jeder Text kommt vor (die neuesten zuerst, falls das Budget nicht reicht). Die Karten geben den Überblick, die Textstellen Einzelheiten und wörtliche Belege mit Seite; die Grundlage unter der Antwort nennt beides. Braucht eine Frage vor allem Einzelheiten aus wenigen Texten, die Frageart „Detail“ wählen oder einzelne Texte befragen.
 
 ### Wie gesucht wird
 
@@ -369,6 +394,17 @@ Bei einer Überblicksfrage über mehr als drei Texte erhält das Sprachmodell st
 2. Jede Anfrage sucht nach Bedeutung (Embeddings) und nach Stichworten (BM25); die Ranglisten werden zusammengeführt.
 3. Ähnliche Textstellen werden zugunsten von Vielfalt ausgedünnt, höchstens wenige je Text (bei „Automatisch“ abhängig von der Zahl der Texte, siehe oben).
 4. Optional prüfen **Recherche-Runden**, ob Aspekte fehlen, und suchen gezielt nach; die **Neusortierung** ordnet die Kandidaten mit dem Hilfsmodell oder einem lokalen Cross-Encoder neu.
+
+### Fragen zu einem bestimmten Text oder einer Abbildung
+
+**Genannter Text:** Steht der Titel eines Texts aus dem Suchbereich in der Frage – ganz oder der Haupttitel vor dem Doppelpunkt, wenn er mindestens fünf Wörter hat –, sucht Zotivity zuerst nur in diesem Text. Seine Textstellen erhalten gut die Hälfte des Umfangs, die übrigen Texte füllen den Rest. Die Grundlage unter der Antwort nennt ihn („zuerst im genannten Text: …“). Kürzere Haupttitel gelten nicht, weil sie oft einfach das Thema der Frage sind. Für eine Frage nur zu diesem Text eignet sich **Diesen Text befragen** (Index → Texte im Korpus).
+
+**Abbildung nach Nummer:** „Beschreibe Abbildung 1 in …“, „Was zeigt Fig. 3?“, „Abb. 2 und 4“: Zotivity sucht die Abbildungen mit dieser Nummer in der Bildunterschrift. Gesucht wird im genannten Text; nennt die Frage keinen, auch über den Nachnamen der Erstautorin bzw. des Erstautors oder den Text der vorigen Frage („Und Abbildung 2?“). Ohne genannten Text nur dann, wenn die Nummer in höchstens zwei Texten des Suchbereichs vorkommt. Gefundene Abbildungen stehen an erster Stelle der Textstellen, dazu der Textabschnitt mit der Bildunterschrift.
+
+- **Beschrieben:** Das Modell erhält die Beschreibung („Abbildung (maschinell beschrieben)“).
+- **Noch nicht beschrieben:** Das Modell erhält nur Bildunterschrift und Text in der Grafik („Abbildung (noch nicht beschrieben)“) und sagt das in der Antwort. Darunter erscheint **Abbildung beschreiben und neu antworten**: Zotivity lässt nur diese Abbildung beschreiben (wie unter Einstellungen → Index → Abbildungen eingestellt) und stellt dieselbe Frage nochmals.
+
+Bei **ganzen Texten** folgen auf jeden Text seine beschriebenen Abbildungen als eigener Abschnitt mit Seite.
 
 ### Antwort und Belege
 
@@ -556,6 +592,7 @@ Die Abfrage geht an github.com; GitHub sieht dabei die IP-Adresse des Rechners, 
 - Index, Projekte, Chats und Forschungsstände liegen lokal im Datenordner (Einstellungen → Programm & Daten). Er liegt bewusst nicht in einem synchronisierten Ordner.
 - Mit einem lokalen Embedding-Modell (eingebaut oder Ollama) verlassen die Texte den Rechner beim Indexieren nicht. Mit einem Cloud-Embedding gehen alle Textabschnitte an den Anbieter. Die eingebaute Laufzeit nimmt nur Anfragen von Zotivity an (zufälliger Schlüssel, nur 127.0.0.1) und greift nie aufs Netz zu; Hugging Face wird nur für Downloads per Knopf und für die Namenssuche angefragt.
 - Beim Fragen und beim Forschungsstand gehen die gefundenen Textstellen bzw. die Texte der Auswahl an den Anbieter des Sprachmodells. Mit Ollama als Sprachmodell bleibt alles lokal.
+- **Abbildungen** gehen nur an das Sprachmodell, wenn Sie sie beschreiben lassen („Beschreiben“, „Abbildung beschreiben und neu antworten“) oder „Nach jedem Indexieren automatisch beschreiben“ einschalten: Bildunterschrift, Text der Seite und – für Modelle, die Bilder verstehen – ein Bild der Abbildung.
 - **Suchen** arbeitet ganz ohne Sprachmodell.
 - Beim Start fragt Zotivity auf GitHub nach einer neuen Version (abschaltbar bei der Installation und unter Einstellungen → Programm & Daten). Dabei geht nur die Anfrage selbst an GitHub, keine Daten aus Zotivity. Das ist die einzige Verbindung, die Zotivity von sich aus aufbaut; die Datenschutzerklärung (PRIVACY.de.md im Repository, auch im Installer) nennt alle.
 - API-Schlüssel liegen verschlüsselt im Anmeldeinformationsspeicher des Betriebssystems.

@@ -1,15 +1,15 @@
 // Indexierung: genauer Fortschritt (Dokument, Abschnitte, Restzeit), Etappen, Schutzfunktionen, Sicherung.
 // Rechts: die Texte des gewählten Korpus (indexiert, offen, Probleme), anklickbar nach Zotero.
 import { h } from '../core/vdom.js';
-import { state, update, ui, toast, run, saveSettings, loadCorpora, loadSetup, loadStatus, watchJob, runningJob, submitIndexRun,
+import { state, update, ui, toast, run, confirmDialog, saveSettings, loadCorpora, loadSetup, loadStatus, watchJob, runningJob, submitIndexRun,
   moveQueued, removeQueued } from '../core/store.js';
 import * as api from '../core/api.js';
 import { t } from '../core/i18n.js';
 import { icon } from '../ui/icons.js';
-import { btn, iconBtn, card, notice, spinner, progress, progressRing, toggle, numberInput, field, badge, emptyState, select, paneProps, splitter } from '../ui/components.js';
+import { btn, iconBtn, card, notice, spinner, progress, progressRing, toggle, numberInput, field, badge, emptyState, select, textInput, paneProps, splitter } from '../ui/components.js';
 import { fmtInt, fmtNum, fmtDuration, fmtBytes, fmtDate, fmtAgo, plural, nTexts, nIndexed, embedHint, refreshHint, openHint } from '../core/util.js';
 import { navigate, viewHeader } from './shell.js';
-import { indexCorpus } from './corpora.js';
+import { indexCorpus, retryCorpus } from './corpora.js';
 import { startEmbedding } from './embedmodels.js';
 import { duplicatesCard, resetDuplicates } from './duplicates.js';
 
@@ -206,10 +206,11 @@ function corporaTable() {
   anyToEmbed && h('td', { class: 'num' }, c.stats.to_embed ? badge(fmtInt(c.stats.to_embed), 'info') : '0'),
   h('td', { class: 'num' }, c.stats.pending ? badge(fmtInt(c.stats.pending), 'warning') : '0'),
   h('td', { class: 'num' }, c.stats.no_text + c.stats.error ? badge(fmtInt(c.stats.no_text + c.stats.error), 'danger') : '0'),
-  h('td', { class: 'num', onclick: e => e.stopPropagation() },
+  h('td', { class: 'num nowrap', onclick: e => e.stopPropagation() },
     c.stats.to_embed && !c.stats.pending
       ? btn(t('Einbetten'), { size: 'sm', kind: 'ghost', icon: 'play', title: queueHint(t('Texte dieses Korpus für {m} einbetten', { m: model || '' })), onClick: () => startEmbedding(c.id) })
-      : btn(t('Indexieren'), { size: 'sm', kind: 'ghost', icon: 'play', title: queueHint(null), onClick: () => indexCorpus(c) })));
+      : btn(t('Indexieren'), { size: 'sm', kind: 'ghost', icon: 'play', title: queueHint(null), onClick: () => indexCorpus(c) }),
+    c.stats.no_text + c.stats.error ? iconBtn('refresh', queueHint(t('Erneut versuchen: die Texte mit Fehler oder ohne Text dieses Korpus nochmals lesen ({n})', { n: fmtInt(c.stats.no_text + c.stats.error) })), () => retryCorpus(c)) : null));
   const body = others.length ? [
     group(p ? t('Dieses Projekt: {name}', { name: p.name }) : t('Dieses Projekt'), 'g-own'),
     own.length ? own.map(c => row(c, false)) : h('tr', { key: 'none', class: 'group-empty' }, h('td', { colspan: cols, class: 'muted small' }, t('Noch kein Korpus in diesem Projekt.'))),
@@ -399,6 +400,115 @@ export function backupCard() {
       btn(t('Jetzt sichern'), { size: 'sm', icon: 'download', disabled: !!runningJob('index'), why: t('Während einer Indexierung wird am Ende automatisch gesichert.'),
         onClick: async () => { s.backups = await run(() => api.post('/api/index/backup')); toast(t('Index gesichert.'), 'success'); update(); } }),
       b && api.isDesktop() && btn(t('Ordner öffnen'), { size: 'sm', kind: 'ghost', icon: 'folder', onClick: () => api.revealPath(b.folder) }))));
+}
+
+// Abbildungen in PDFs: beim Einlesen finden, von einem Sprachmodell beschreiben lassen, durchsuchbar machen
+export function figuresCard() {
+  const s = st();
+  const cfg = state.settings && state.settings.figures;
+  if (!cfg) return null;
+  // Bereich für Zahlen und „Beschreiben“: ganzer Index oder ein Korpus
+  const corpora = state.corpora || [];
+  if (s.figCorpus && !corpora.some(c => String(c.id) === String(s.figCorpus))) s.figCorpus = '';
+  const scope = s.figCorpus ? { corpus_id: Number(s.figCorpus) } : {};
+  if (cfg.enabled && s.figures === undefined) {
+    s.figures = null;
+    api.get(`/api/figures${s.figCorpus ? `?corpus_id=${s.figCorpus}` : ''}`).then(r => { s.figures = r; update(); }).catch(() => { s.figures = { error: true }; update(); });
+  }
+  const f = s.figures;
+  const reload = () => { s.figures = undefined; update(); };
+  const follow = async job => {
+    s.figJob = job.id; update();
+    const done = await watchJob(job.id, () => update());
+    s.figJob = null;
+    toast(done.message || done.phase || t('Fertig'), done.status === 'done' ? 'success' : 'error');
+    reload();
+  };
+  const scan = async () => { const job = await run(() => api.post('/api/figures/scan', {})); if (job) follow(job); };
+  const describe = async () => {
+    const m = cfg.model === 'main' ? t('Hauptmodell') : t('Hilfsmodell');
+    if (!await confirmDialog(t('Abbildungen beschreiben?'), t('{n} Abbildungen mit dem {m} beschreiben lassen. Geschätzt rund {i} Input-Token (mit Bild mehr) und {o} Output-Token; bei kostenpflichtigen Modellen fallen Kosten an.',
+      { n: fmtInt(f.open), m, i: fmtInt(f.input_tokens), o: `${fmtInt(f.output_tokens[0])}–${fmtInt(f.output_tokens[1])}` }), { ok: t('Beschreiben'), ai: true })) return;
+    const job = await run(() => api.post('/api/figures/describe', scope));
+    if (job) follow(job);
+  };
+  const busy = !!s.figJob || !!runningJob('index') || !!runningJob('figures');
+  const paused = f && f.auto_paused_until && f.auto_paused_until * 1000 > Date.now();
+  return card(t('Abbildungen'), 'file', h('div', { class: 'stack' },
+    toggle({ checked: cfg.enabled, label: t('Abbildungen in PDFs erkennen und beschreiben lassen'), onChange: v => { saveSettings({ figures: { enabled: v } }); reload(); } }),
+    h('p', { class: 'muted small' }, t('Beim Einlesen findet Zotivity Bilder und Diagramme mit Bildunterschrift. Ein Sprachmodell beschreibt sie; die Beschreibung wird mit Seite durchsuchbar und ist als „maschinell beschrieben“ gekennzeichnet. Zahlen aus Diagrammen können falsch gelesen sein – im Zweifel die Abbildung im PDF ansehen.')),
+    cfg.enabled ? h('div', { class: 'row wrap' },
+      field(t('Modell'), select({ value: cfg.model, label: t('Modell für die Beschreibungen'), onChange: v => saveSettings({ figures: { model: v } }),
+        options: [{ value: 'helper', label: t('Hilfsmodell') }, { value: 'main', label: t('Hauptmodell') }] })),
+      field(t('Höchstens je Text'), numberInput({ value: cfg.max_per_doc, min: 1, max: 500, int: true, label: t('Höchstens je Text'), onChange: v => saveSettings({ figures: { max_per_doc: v } }) }))) : null,
+    cfg.enabled ? toggle({ checked: cfg.send_image, label: t('Bild mitschicken (für Modelle, die Bilder verstehen; sonst nur Bildunterschrift und Text in der Grafik)'), onChange: v => saveSettings({ figures: { send_image: v } }) }) : null,
+    cfg.enabled ? toggle({ checked: cfg.auto_describe, label: t('Nach jedem Indexieren automatisch beschreiben'), onChange: v => { saveSettings({ figures: { auto_describe: v } }); reload(); } }) : null,
+    cfg.enabled && cfg.auto_describe ? h('div', { class: 'stack-sm' },
+      field(t('Höchstens je Lauf'), numberInput({ value: cfg.auto_limit, min: 1, max: 5000, int: true, label: t('Höchstens je Lauf'), onChange: v => saveSettings({ figures: { auto_limit: v } }) })),
+      h('p', { class: 'muted small' }, t('Nach jedem Indexierlauf beschreibt ein eigener Auftrag die noch offenen Abbildungen – höchstens so viele je Lauf, Abbildungen mit Bildunterschrift zuerst; der Rest folgt beim nächsten Lauf. Ohne Rückfrage: Bei kostenpflichtigen Modellen fallen Kosten an.')),
+      paused ? notice('warning', t('Automatisches Beschreiben pausiert bis {t}: Beim letzten Versuch gelang keine Beschreibung (Modell nicht erreichbar?). „Beschreiben“ von Hand hebt die Pause auf.', { t: fmtDate(f.auto_paused_until) })) : null) : null,
+    cfg.enabled && corpora.length ? field(t('Bereich'), select({ value: s.figCorpus || '', label: t('Bereich für Zahlen und „Beschreiben“'), onChange: v => { s.figCorpus = v; reload(); },
+      options: [{ value: '', label: t('Ganzer Index (alle Korpora)') }, ...corpora.map(c => ({ value: String(c.id), label: c.name }))] })) : null,
+    cfg.enabled && f && !f.error ? h('p', { class: 'small' }, t('{a} Abbildungen in {b} Texten gefunden, {c} beschrieben.', { a: fmtInt(f.figures), b: fmtInt(f.texts), c: fmtInt(f.described) })) : null,
+    cfg.enabled ? h('div', { class: 'row wrap' },
+      btn(t('In eingelesenen PDFs suchen'), { size: 'sm', icon: 'search', disabled: busy, why: t('Es läuft bereits ein Auftrag.'), onClick: scan }),
+      btn(f && f.open ? t('Beschreiben ({n} offen)', { n: fmtInt(f.open) }) : t('Beschreiben'), { size: 'sm', kind: 'ai', icon: 'ai', disabled: busy || !(f && f.open), why: busy ? t('Es läuft bereits ein Auftrag.') : t('Keine Abbildung offen.'), onClick: describe })) : null,
+    cfg.enabled ? h('p', { class: 'muted small' }, t('Neu eingelesene PDFs werden beim Indexieren durchsucht; schon eingelesene mit „In eingelesenen PDFs suchen“ (liest nur, bettet den Text nicht neu ein). Die Suche gilt immer für den ganzen Index.')) : null));
+}
+
+// Sicherung in einen selbst gewählten Ordner (z. B. switchdrive): Index, Recherchen, Einstellungen, eigene Zitierstile
+export function folderBackupCard() {
+  const s = st();
+  const cfg = state.settings && state.settings.backup;
+  if (!cfg) return null;
+  if (s.fbackup === undefined) {
+    s.fbackup = null;
+    api.get('/api/backup').then(r => { s.fbackup = r; update(); }).catch(err => { s.fbackup = { error: err.message, backups: [] }; update(); });
+  }
+  const b = s.fbackup;
+  const reload = () => { s.fbackup = undefined; update(); };
+  const setFolder = async folder => {
+    const v = (folder || '').trim();
+    if (!v) { await saveSettings({ backup: { folder: '' } }); s.folderDraft = undefined; reload(); return; }
+    let r;
+    try { r = await run(() => api.post('/api/backup/check', { folder: v })); } catch { return; }
+    await saveSettings({ backup: { folder: r.folder } });
+    s.folderDraft = undefined;
+    reload();
+  };
+  const choose = async () => { const p = await api.chooseFolder(cfg.folder); if (p) await setFolder(p); };
+  const backupNow = async () => {
+    s.fbusy = true; update();
+    try {
+      const r = await api.post('/api/backup', {});
+      s.fbackup = r;
+      toast(t('Gesichert in {p}', { p: r.result.path }), 'success');
+    } catch (err) {
+      toast(err.message, 'error', 0);
+      reload();
+    } finally { s.fbusy = false; update(); }
+  };
+  const draft = s.folderDraft !== undefined ? s.folderDraft : cfg.folder;
+  return card(t('Sicherung in einen eigenen Ordner'), 'folder', h('div', { class: 'stack' },
+    h('p', { class: 'muted small' }, t('Kopiert Index, Projekte, Chats, Forschungsstände, Recherchen, Einstellungen und eigene Zitierstile in einen frei wählbaren Ordner, z. B. in switchdrive, OneDrive oder auf einen USB-Stick. API-Schlüssel gehören nicht dazu; sie bleiben im Schlüsselspeicher des Betriebssystems.')),
+    field(t('Ordner'), h('div', { class: 'row' },
+      h('div', { class: 'grow' }, textInput({ value: draft, label: t('Ordner für die Sicherung'), placeholder: t('kein Ordner – Sicherung aus'),
+        onInput: v => { s.folderDraft = v; }, onChange: v => setFolder(v), onKeyDown: e => { if (e.key === 'Enter') setFolder(e.target.value); } })),
+      api.isDesktop() ? btn(t('Wählen …'), { size: 'sm', icon: 'folder', onClick: choose }) : null,
+      cfg.folder ? iconBtn('x', t('Keine Sicherung in einen Ordner'), () => setFolder('')) : null)),
+    cfg.folder ? h('div', { class: 'row wrap' },
+      field(t('Automatisch'), select({ value: String(cfg.every_hours), label: t('Automatisch sichern'), onChange: v => saveSettings({ backup: { every_hours: Number(v) } }),
+        options: [{ value: '24', label: t('täglich (nach Indexierläufen und beim Start)') }, { value: '168', label: t('wöchentlich') },
+          { value: '0', label: t('nur von Hand') }].concat(['24', '168', '0'].includes(String(cfg.every_hours)) ? [] : [{ value: String(cfg.every_hours), label: t('alle {n} Stunden', { n: cfg.every_hours }) }]) })),
+      field(t('Sicherungen behalten'), numberInput({ value: cfg.keep, min: 1, max: 30, int: true, label: t('Sicherungen behalten'), onChange: v => saveSettings({ backup: { keep: v } }) }))) : null,
+    b && b.error ? notice('warning', t('Letzte Sicherung fehlgeschlagen: {e}', { e: b.error })) : null,
+    cfg.folder && b ? (b.backups && b.backups.length ? h('div', { class: 'stack-sm' }, b.backups.map(x => h('div', { key: x.name, class: 'row small' }, icon('folder', 13),
+      h('span', { class: 'grow' }, fmtDate(x.created_at)), h('span', { class: 'muted' }, fmtBytes(x.bytes)))))
+      : h('p', { class: 'muted small' }, t('In diesem Ordner liegt noch keine Sicherung.'))) : null,
+    cfg.folder ? h('div', { class: 'row' },
+      btn(t('Jetzt sichern'), { size: 'sm', kind: 'primary', icon: 'download', busy: !!s.fbusy, onClick: backupNow }),
+      api.isDesktop() ? btn(t('Ordner öffnen'), { size: 'sm', kind: 'ghost', icon: 'folder', onClick: () => api.revealPath(cfg.folder) }) : null) : null,
+    cfg.folder ? h('p', { class: 'muted small' }, t('Wiederherstellen: Zotivity beenden und die Dateien einer Sicherung in den Datenordner kopieren. Die Anleitung liegt als WIEDERHERSTELLEN.txt in jeder Sicherung.')) : null));
 }
 
 // ------------------------------------------------------------------ Warteschlange

@@ -25,7 +25,7 @@ from pathlib import Path
 
 import numpy as np
 
-from zotivity import paths
+from zotivity import __version__, paths
 from zotivity.embeddings import EmbeddingError
 from zotivity.engine import Engine
 from zotivity.extract import chunk_pages, extract_file, make_abstract_chunk, text_as_document
@@ -361,6 +361,8 @@ class Indexer:
         if path and path.exists():
             kwargs = {"max_pages": icfg.max_pages_per_document, "min_chars_per_page": icfg.min_chars_per_page,
                       "ocr": icfg.ocr, "ocr_languages": icfg.ocr_languages}
+            if settings.figures.enabled:  # Abbildungen gleich mit suchen (nur PDF)
+                kwargs["figures"] = True
             # Seitenspanne laut Zotero (z. B. 114–126) als Gegenprobe für die gedruckten Seitenzahlen
             page_range = parse_page_range(((self.store.item(lib, parent) or {}).get("data") or {}).get("pages"))
             if page_range:
@@ -412,7 +414,16 @@ class Indexer:
                                              min_chunk_tokens=ccfg.min_chunk_tokens))
         self.store.replace_chunks(lib, parent, key, chunks)
         # Gedruckte Seitenzahl je PDF-Seite ("" = ohne) – für Seitenangaben in Belegen und deren Links
-        labels = [p.label for p in doc.pages] if doc.method in ("pymupdf", "ocr") else []
+        labels = [p.label for p in doc.pages] if doc.method in ("pdfium", "pymupdf", "ocr") else []
+        # Abbildungen: gefundene speichern; schon beschriebene (gleiche Datei) werden gleich wieder Abschnitte
+        from zotivity import figures as figures_mod
+
+        if settings.figures.enabled and doc.method in ("pdfium", "ocr"):
+            self.store.put_figures(lib, key, parent, figures_mod.records(doc.figures, read_md5,
+                                                                          settings.figures.max_per_doc))
+            self.store.set_figure_chunks(lib, parent, key, figures_mod.chunks_for(self.store.figures(lib, key), labels))
+        elif not settings.figures.enabled:
+            self.store.set_figure_chunks(lib, parent, key, [])
         self.store.set_attachment_status(lib, key, "indexed", error=warning or None, method=doc.method,
                                          n_pages=doc.n_pages, n_chars=doc.char_count, n_chunks=len(chunks),
                                          indexed_md5=read_md5, indexed_at=time.time(),
@@ -506,6 +517,9 @@ class Indexer:
                                    worker=worker, processed=processed, embed_only=embed_only)
             if result.get("extracted") or result.get("errors") or result.get("no_text"):
                 self.maybe_backup(job)
+            from zotivity import backup  # Sicherung in den gewählten Ordner (wenn eingerichtet und fällig)
+
+            backup.maybe_backup(self.engine, job)
             if result.get("stopped"):
                 status = "switched" if result.get("switched") else "stage"
             return result
@@ -520,6 +534,13 @@ class Indexer:
             if worker is not None:
                 worker.stop()
             lock.release()
+            if status not in ("error", "cancelled"):
+                try:  # Einstellungen → Index → Abbildungen: „Nach jedem Indexieren automatisch beschreiben“
+                    from zotivity import figures as figures_mod
+
+                    figures_mod.start_auto(self.engine, job.note)
+                except Exception:  # noqa: BLE001 - darf den Lauf nicht verderben
+                    log.exception("Abbildungen nicht automatisch beschrieben")
             try:
                 self.record_run(job, trigger, status, error, result, processed, corpus_id)
             except Exception:  # noqa: BLE001 - der Verlauf darf den Lauf nicht verderben
@@ -633,6 +654,8 @@ class Indexer:
             return result
         if retry_errors:
             self.store.reset_attachments(scope)
+        elif not embed_only:
+            self.retry_after_update(job)
 
         # Embedding-Modell früh prüfen – klare Meldung statt Abbruch mitten im Lauf
         job.update(phase="Vorbereitung", message="Embedding-Modell wird geladen …")
@@ -828,5 +851,22 @@ class Indexer:
         progress["eta"] = 0
         progress["fraction"] = 1.0
         job.check()
-        job.update(phase="Fertig", message=result.get("stopped") or "Index ist aktuell")
+        # Texte mit Fehler oder ohne Text im Bereich: liest dieser Lauf nicht neu – sagen, statt „aktuell“ zu melden
+        open_problems = self.store.problem_counts(scope)
+        progress.update(open_errors=open_problems["error"], open_no_text=open_problems["no_text"], corpus_id=corpus_id)
+        n_open = open_problems["error"] + open_problems["no_text"]
+        message = result.get("stopped") or (f"Index ist aktuell – Texte mit Fehler oder ohne Text: {n_open}"
+                                            if n_open else "Index ist aktuell")
+        job.update(phase="Fertig", message=message)
         return result
+
+    def retry_after_update(self, job: Job | None = None) -> int:
+        """Beim ersten Lauf nach einem Update: Texte mit Fehler einmal neu lesen – das Update kann den Fehler behoben
+        haben. Texte ohne Text (Scans) nicht; scheitert ein Text wieder, bleibt er bis zum nächsten Update stehen."""
+        if self.store.get_meta("errors_retried_version") == __version__:
+            return 0
+        n = self.store.reset_attachments(None, statuses=("error",))
+        self.store.set_meta("errors_retried_version", __version__)
+        if n and job:
+            job.note(f"Neue Version {__version__}: Texte mit Fehler werden erneut gelesen ({n})")
+        return n

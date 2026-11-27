@@ -53,6 +53,10 @@ class Source:
             parts.append(f"({self.page_text})")
         if self.kind == "abstract":
             parts.append("(Abstract)")
+        if self.kind == "figure":
+            parts.append("(Abbildung, maschinell beschrieben)")
+        if self.kind == "figure_open":
+            parts.append("(Abbildung, noch nicht beschrieben – nur Bildunterschrift und Text in der Grafik)")
         return " ".join(parts)
 
     def as_dict(self) -> dict:

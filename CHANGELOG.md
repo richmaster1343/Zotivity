@@ -2,6 +2,62 @@
 
 All notable changes, newest first.
 
+## 1.3.0 – 2026-11-27
+
+### Changed
+- **New PDF engine: PDFium (pypdfium2) instead of PyMuPDF.** PyMuPDF is licensed under AGPL or a commercial
+  licence; PDFium is BSD/Apache. Text, paragraphs, running heads and printed page numbers come from the same steps as
+  before. Compared on 18 real PDFs (articles and books up to 659 pages): 99.6 % of the characters, 98.9 % identical
+  words, page numbers identical on every page, about 5 ms per page. Text drawn twice for bold print is no longer
+  read twice. Maths letters in formulas (italic N, x) become ordinary letters, so a search for "N = 120" finds
+  them; emojis stay. EPUB files are read chapter by chapter from the archive.
+- **Text recognition (OCR) runs `tesseract.exe`** (searched on the path and under Program Files\Tesseract-OCR) on a
+  rendered image of the page; the setting and its result are the same as before.
+
+### Added
+- **Figures in PDFs** (Settings → Index → Figures, off by default). Images and drawn charts are found while reading,
+  with caption and the text inside the chart. "Describe" has the helper or main model describe them – with the image
+  if the model understands images – after showing the estimated tokens. The descriptions become searchable with their
+  page, appear as "Figure (machine-described)" and are not quoted verbatim. Reading the same file again keeps them.
+  **Describe automatically after each indexing run** (off by default) starts a separate task for the figures still
+  open, at most 200 per run (adjustable), figures with a caption first; it pauses for six hours if a run produced no
+  description. **Scope** shows the numbers and describes for a single corpus instead of the whole index. Whole texts
+  under Ask carry their described figures as a section with page.
+- **Questions about a figure:** "Describe Figure 1 in …", "Fig. 3", "Abb. 2 and 4" find the figure by the number in
+  its caption – in the named text, via the first author, the previous question, or (if unambiguous) the whole scope.
+  The figure and the passage with its caption come first. If it is not described yet, the answer relies on caption
+  and text and says so; **Describe the figure and answer again** describes just this figure and asks again.
+- **Named text first:** if a question contains the title of a text in scope, its passages are searched separately
+  and fill a little over half of the budget; the basis line names it.
+- **Texts with errors:** a run that leaves texts with errors or without text in its scope says so ("All other texts
+  are up to date. Not read again – with errors or without text: 16.") and offers **Try again**; per corpus also via
+  ↻ in the corpus list under Index and "Try texts with errors again" in the corpus menu. After an update, the first
+  run reads texts with errors again once by itself.
+
+### Fixed
+- **Closing Zotivity no longer hangs** on running background tasks (e.g. reading in stages): they are cancelled, and
+  after a few seconds Zotivity ends regardless. The setup ends a Zotivity that does not respond instead of showing
+  "Zotivity is still running" again and again.
+- OpenAI-compatible servers: a parameter the server rejects (e.g. a reasoning effort it does not know) is left out
+  and the request repeated – also for requests running at the same time, which so far failed with an error.
+
+## 1.2.9 – 2026-11-26
+
+### Added
+- **Backup to a folder of your choice** (Settings → Index). Zotivity copies the index with projects, chats and
+  literature reviews, the database searches (`research.db`), the settings and your own citation styles to a folder
+  you choose, e.g. in switchdrive, OneDrive or on a USB stick: daily or weekly (after indexing runs and shortly after
+  start-up) or only by hand. The newest three backups are kept (adjustable); each is a subfolder of its own with
+  restore instructions, and other files in the folder are left alone. API keys stay in the credential store.
+
+### Changed
+- **Overview questions under Ask also get passages from the full texts.** Next to one card per text (abstract,
+  details, evaluation sheet), the model now receives the best matching passages, so an overview can name details and
+  quote with page numbers. Before, an overview answer saw only abstracts and evaluation sheets.
+- **Comparisons of concepts, definitions or positions count as detail questions**, so they are answered from
+  passages of the full texts. "Overview" is kept for questions about the texts as a whole (which texts, methods,
+  samples or results there are).
+
 ## 1.2.8 – 2026-11-23
 
 ### Added

@@ -244,13 +244,38 @@ These settings are under **Settings → Index**; the gear at the top of the Inde
 - **Read texts in a separate process**: a broken PDF that crashes or hangs the reader is marked as an error after the time limit – the run continues.
 - **Keep the computer awake** prevents sleep mode during indexing.
 - If the embedding service is briefly unavailable (e.g. Ollama restarted), Zotivity waits for a configurable time instead of aborting.
-- **Index backup**: after indexing runs, at most every 12 hours; the two newest are kept.
+- **Index backup**: after indexing runs, at most every 12 hours; the two newest are kept. It is stored in the data folder, i.e. on the same drive.
+- **Backup to a folder of your choice** (Settings → Index): copies index, projects, chats, literature reviews, database searches (`research.db`), settings and your own citation styles to a folder you choose, e.g. in switchdrive, OneDrive or on a USB stick. Automatically daily or weekly (after indexing runs and shortly after start-up) or manually with **Back up now**; the newest three are kept (adjustable). Each backup is a subfolder "Zotivity-Sicherung-date-time"; Zotivity does not touch other files in the folder. API keys are not included, they stay in the credential store. To restore: quit Zotivity and copy the files of a backup into the data folder (instructions in `WIEDERHERSTELLEN.txt` in each backup).
 
-### Texts without text
+### Texts without text or with errors
 
-"No text" usually means scans without a text layer. Remedy: enable text recognition (OCR) under **Settings → Expert → Reading** (requires a Tesseract installation) or save the PDF again with text recognition. Then click **Try again**.
+"No text" usually means scans without a text layer. Remedy: enable text recognition (OCR) under **Settings → Expert → Reading** (requires a Tesseract installation: Zotivity looks for `tesseract.exe` on the path and under "Program Files\Tesseract-OCR") or save the PDF again with text recognition. Then click **Try again**.
+
+A normal run ("Index") does not read texts without text or with errors again – otherwise every run would retry the same files. If such texts remain in the scope of the run, the message at the end says so ("All other texts are up to date. Not read again – with errors or without text: 16.") and offers **Try again**. Other ways:
+
+- **Index → corpora:** the ↻ icon next to "Index" appears for a corpus with problems and reads only its problem texts again.
+- **Corpora → "…" of a corpus → Try texts with errors again**.
+- The card **Texts without text or with errors** under Index: **Try again** for all corpora.
+
+After an **update**, the first run reads texts with errors again once by itself, as the new version may have fixed the error. Texts without text are not included. If a text fails again, it stays until the next update.
 
 The list of problems shows each attachment separately. An item with several attachments can be searchable despite a problem – the search then shows "indexed".
+
+### Figures
+
+Under **Settings → Index → Figures** you can use figures in PDFs. While reading, Zotivity finds embedded images and drawn charts that are large enough, with their caption ("Figure 3 …", "Abbildung 2 …") and the text in the chart (axes, legend). Logos, decoration and whole scanned pages do not count. **Describe** has a language model (helper or main model) describe each figure in a few sentences – with the image if the model understands images, otherwise from caption and text only; Zotivity shows the estimated tokens first. The descriptions become searchable with their page and appear under Ask as **Figure (machine-described)**; the model does not quote them verbatim. Numbers in charts may be misread – if in doubt, look at the figure in the PDF. **Search already read PDFs** searches PDFs read earlier (reads only, does not re-embed the text). Descriptions belong to the file: reading the same file again keeps them at no cost.
+
+**Getting started** – best before the first indexing run, so Zotivity finds the figures while reading:
+
+1. Under **Settings → Language models** choose a model that understands images; the helper model is usually enough. Examples are Claude, GPT and Gemini, many OpenAI-compatible servers and, locally, a vision model via Ollama (then the images stay on your computer). Set the **reasoning depth** to a value the server knows – some have no "medium", only "low", "high" and above.
+2. Under **Settings → Index → Figures** switch them on and choose: **Model** (helper or main model), **Maximum per text** (default 40; figures with a caption first), **Send the image** (off: only caption and text in the chart go to the model – cheaper but less accurate) and, if you like, **Describe automatically after each indexing run**.
+3. Index the corpus. Figures are described automatically after the run or with **Describe**. Already indexed: switch on and **Search already read PDFs**.
+
+**Costs:** per figure Zotivity reckons with about 1700 input tokens with the image (900 without) and 150–400 output tokens; 1000 figures are about 1.7 million input tokens. With a local model or a university server without billing this costs nothing.
+
+The numbers on the card (e.g. "250 figures found in 40 texts, 0 described") cover the **whole index**, i.e. all corpora. With **Scope** you pick a single corpus; the numbers and **Describe** then cover only its texts. "Search already read PDFs" always covers the whole index.
+
+**Describe automatically after each indexing run** (off by default): after each indexing run – by hand, from the queue, in the background or from Zotero – and after "Search already read PDFs", a separate task describes the figures still open, across the whole index. Indexing does not wait for it. **At most per run** (default 200) limits the amount; figures with a caption come first, the rest follows with the next run. As no confirmation with an estimate is shown, paid models charge without further confirmation. If the key for the chosen model is missing, the run report says so. If an automatic task produces no description at all (model not reachable), automatic describing pauses for six hours; describing by hand lifts the pause.
 
 ### Web page snapshots
 
@@ -358,9 +383,9 @@ Above the input field, the **plan line** shows what happens when you send, e.g. 
 
 ### Question type: overview with one card per text
 
-Together with the multi-query search, the helper model classifies the question: **Detail** (a question about content), **Overview** (overview or comparison across the texts, e.g. which methods or samples the studies use) or **Evidence** (looking for evidence for a statement). The plan line shows the type detected last; **Question type** lets you set it.
+Together with the multi-query search, the helper model classifies the question: **Detail** (a question about content, including a comparison of concepts, definitions, theories or positions), **Overview** (a question about the texts as a whole, e.g. which texts, methods, samples or results there are) or **Evidence** (looking for evidence for a statement). The plan line shows the type detected last; **Question type** lets you set it.
 
-For an overview question about more than three texts, the language model gets a short **card** per text instead of passages: author, year, title, type and venue, abstract and – where one exists – the evaluation sheet from a literature review. About 300 tokens per text; 100 texts are about 30,000 tokens, and every text appears (newest first if the budget runs out). For details from inside the texts, choose the question type "Detail" or ask single texts.
+For an overview question about more than three texts, the language model gets a short **card** per text plus the best matching **passages** from the full texts (about a third of the volume). The card contains author, year, title, type and venue, abstract and – where one exists – the evaluation sheet from a literature review. About 300 tokens per text; 100 texts are about 30,000 tokens, and every text appears (newest first if the budget runs out). The cards give the overview, the passages details and verbatim evidence with page; the basis below the answer names both. If a question mainly needs details from a few texts, choose the question type "Detail" or ask single texts.
 
 ### How the search works
 
@@ -368,6 +393,17 @@ For an overview question about more than three texts, the language model gets a 
 2. Each query searches by meaning (embeddings) and by keyword (BM25); the rankings are merged.
 3. Similar passages are thinned out in favour of variety, with at most a few per text (with "Automatic" depending on the number of texts, see above).
 4. Optionally, **research rounds** check whether aspects are missing and search specifically for them; **re-ranking** reorders the candidates with the helper model or a local cross-encoder.
+
+### Questions about a particular text or figure
+
+**Named text:** If the question contains the title of a text in the search scope – the full title, or the main title before the colon if it has at least five words – Zotivity first searches that text alone. Its passages get a little over half of the budget; the other texts fill the rest. The basis below the answer names it ("first from the text you named: …"). Shorter main titles do not count, as they are often simply the topic of the question. For a question about this text only, use **Ask this text** (Index → Texts in the corpus).
+
+**Figure by number:** "Describe Figure 1 in …", "What does Fig. 3 show?", "Abb. 2 and 4": Zotivity looks for the figures with that number in their caption – in the named text; if the question names none, also via the first author's last name or the text of the previous question ("And Figure 2?"). Without a named text only if the number occurs in at most two texts of the search scope. Figures found come first among the passages, together with the passage containing the caption.
+
+- **Described:** the model gets the description ("Figure (machine-described)").
+- **Not described yet:** the model gets only the caption and the text in the chart ("Figure (not described yet)") and says so in the answer. Below it, **Describe the figure and answer again** has only this figure described (as set under Settings → Index → Figures) and asks the same question again.
+
+With **whole texts**, each text is followed by its described figures as a separate section with their page.
 
 ### Answer and citations
 
@@ -555,6 +591,7 @@ The request goes to github.com; GitHub sees the computer's IP address, nothing e
 - Index, projects, chats and literature reviews are stored locally in the data folder (Settings → Program & data). It deliberately does not sit in a synchronised folder.
 - With a local embedding model (built-in or Ollama), the texts do not leave the computer during indexing. With a cloud embedding, all passages are sent to the provider. The built-in runtime only accepts requests from Zotivity (random key, 127.0.0.1 only) and never accesses the network; Hugging Face is only contacted for downloads at the push of a button and for the name search.
 - When asking and for the literature review, the passages found or the texts of the selection are sent to the provider of the language model. With Ollama as language model everything stays local.
+- **Figures** go to the language model only if you have them described ("Describe", "Describe the figure and answer again") or turn on "Describe automatically after each indexing run": the caption, the text of the page and – for models that understand images – an image of the figure.
 - **Search** works entirely without a language model.
 - At start-up Zotivity asks GitHub for a new version (can be switched off during installation and under Settings → Program & data). Only the request itself goes to GitHub, no data from Zotivity. This is the only connection Zotivity makes on its own; the privacy policy (PRIVACY.md in the repository, also shown by the installer) lists them all.
 - API keys are stored encrypted in the operating system's credential store.

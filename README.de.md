@@ -27,7 +27,7 @@ die Texte des Projekts. Die **Anleitung** im Programm führt durch diese Schritt
 <table>
   <tr>
     <td width="50%" valign="top"><img src="docs/img/feature-research.svg" width="40" height="40" alt=""><br><b>Recherche</b><br>Von der Fragestellung bis zur ausgewählten Literatur in Zotero: Suchstrings für offene Datenbanken, RIS-Import, Pool ohne Duplikate, Screening, Volltexte und ein Flussdiagramm im Stil von PRISMA.</td>
-    <td width="50%" valign="top"><img src="docs/img/feature-ask.svg" width="40" height="40" alt=""><br><b>Fragen</b><br>Fragen an die eigenen Texte, beantwortet nur aus den gefundenen Textstellen. Jeder Beleg öffnet die Textstelle mit Seite.</td>
+    <td width="50%" valign="top"><img src="docs/img/feature-ask.svg" width="40" height="40" alt=""><br><b>Fragen</b><br>Fragen an die eigenen Texte und ihre Abbildungen, beantwortet nur aus den gefundenen Textstellen. Jeder Beleg öffnet die Textstelle mit Seite.</td>
   </tr>
   <tr>
     <td width="50%" valign="top"><img src="docs/img/feature-review.svg" width="40" height="40" alt=""><br><b>Forschungsstand</b><br>Von der Suchstrategie bis zur geprüften Synthese: Jeder Beleg und jedes wörtliche Zitat wird an den PDFs geprüft.</td>
@@ -50,6 +50,11 @@ Siehe [Recherche](#recherche).
 Neu in 1.2: **Mistral** als Sprachmodell; die Recherche zeigt den Stand und den nächsten Schritt; **Suchen** gilt für alle
 Projekte.
 
+Neu in 1.3: **Abbildungen** – Bilder und Diagramme in den PDFs werden beim Einlesen gefunden und von einem
+Sprachmodell beschrieben (mit dem Bild, wenn es Bilder versteht); fragen z. B. «Beschreibe Abbildung 1 in …». Ein
+neuer PDF-Leser (PDFium) liest Text und Seitenzahlen; Texte mit Fehler lassen sich je Korpus erneut versuchen. Siehe
+[Erste Schritte](#erste-schritte).
+
 <p align="center"><img src="docs/screenshots/de/ask.png" alt="Fragen: Antwort mit nummerierten Belegen und der zitierten Textstelle"></p>
 <p align="center"><sub>Antworten mit Belegen; ein Klick zeigt die Textstelle mit Seite. Demo-Bibliothek mit erfundenen Quellen.</sub></p>
 
@@ -70,7 +75,7 @@ Projekte.
 > Programm, das Zotero-Plugin, die Installationsskripte, die Tests und die Dokumentation. Initiiert hat das Projekt
 > [avibecoder](https://github.com/avibecoder42): avibecoder hat festgelegt, was entsteht, jede Version im Forschungsalltag getestet und über
 > jeden nächsten Schritt entschieden; von Hand geschrieben wurde kein Code. Bitte den Code in diesem Bewusstsein lesen:
-> Er ist umfangreich getestet (rund 350 automatische Tests), aber nicht Zeile für Zeile von einer Entwicklerin oder
+> Er ist umfangreich getestet (rund 490 automatische Tests), aber nicht Zeile für Zeile von einer Entwicklerin oder
 > einem Entwickler geprüft.
 
 > **Als Werkzeug nutzen, nicht als Ersatz für die eigene wissenschaftliche Arbeit.** Siehe
@@ -108,6 +113,7 @@ Zotero 10 (lokale API)  ←→  Zotivity-Dienst (Python, 127.0.0.1:23120)   ←�
   + schlankes Plugin           – Text + Seitenzahlen aus PDF/EPUB/HTML/Word   Claude · GPT · Gemini
     (Rechtsklick, Autostart)   – Zerlegung, Literaturverzeichnisse erkennen   DeepSeek · Mistral · lokal (Ollama)
                                – Embedding: eingebaut (llama.cpp), Ollama, OpenAI …
+                               – Abbildungen in PDFs: vom LLM beschrieben
 Browser / Programmfenster ←→   – SQLite-Index: Volltextsuche + Vektoren
                                – Notizen & Sammlungen zurück nach Zotero
 Claude Desktop (MCP) ←→        – MCP-Server
@@ -212,7 +218,11 @@ der Breite ziehen (Doppelklick: Standardbreite), und im Programmfenster lässt s
    Suchbereich ins Sprachmodell, erhält es die **ganzen Texte** mit Seitenangaben (Umfang «Automatisch», «Textstellen»,
    «Ganze Texte»; «Diesen Text befragen» im Korpus). Sonst passt «Automatisch» die Suche an die Zahl der Texte an;
    Überblicksfragen erhalten eine Karte je Text. Lange Texte lassen sich «In Etappen» kapitelweise lesen. Eine
-   Planzeile zeigt vor dem Senden, wie viel Text verwendet wird.
+   Planzeile zeigt vor dem Senden, wie viel Text verwendet wird. Nennt die Frage einen Titel, sucht Zotivity zuerst in
+   diesem Text; «Beschreibe Abbildung 1 in …» findet die Abbildung über ihre Nummer.
+6. **Abbildungen** (optional, Einstellungen → Index): Bilder und Diagramme in PDFs werden beim Einlesen gefunden und von
+   einem Sprachmodell beschrieben – von Hand, je Korpus oder nach jedem Indexieren automatisch. Die Beschreibungen sind
+   durchsuchbar und als «maschinell beschrieben» gekennzeichnet.
 
 Tastatur: Strg+1–5 Ansichten des Projekts, Strg+6 Suchen, Strg+7 CSL-Editor, Strg+8 Index, Strg+, Einstellungen, F1 Hilfe, Strg+P Projekt wechseln.
 Darstellung: System, Hell, Grau, Dunkel (die Titelleiste des Fensters passt sich an).
@@ -271,6 +281,9 @@ werden nicht neu gelesen, nur für das neue Modell eingebettet.
 - Jeder Text wird sofort gespeichert; ein Absturz oder Abbruch verliert höchstens den laufenden Text.
 - Texte werden in einem eigenen Prozess mit Zeitlimit gelesen – eine defekte PDF wird als Fehler markiert, die
   Indexierung läuft weiter.
+- **Texte mit Fehler** liest nicht jeder Lauf neu; der Lauf sagt, wie viele offen sind, und bietet **Erneut
+  versuchen** an (je Korpus auch über ↻ in der Korpusliste unter Index). Nach einem Update werden sie einmal von
+  selbst neu gelesen. Scans ohne Text: Texterkennung (OCR) mit Tesseract, separat installiert.
 - Kurze Ausfälle des Embedding-Dienstes werden überbrückt; der Rechner bleibt wach; der Speicherplatz wird geprüft.
 - Hintergrundmodus in Etappen (Zeitfenster, Höchstzahl Texte pro Lauf), Sicherungen des Index, Warteschlange.
 - **Dubletten:** Dasselbe Werk in mehreren Bibliotheken wird an der DOI bzw. an Titel, Erstautor/in und Jahr erkannt;
@@ -317,8 +330,10 @@ Zotero. Jede Recherche gehört zu einem Zotivity-Projekt (die Projektseite zeigt
 - **PRISMA:** Die Recherche erfasst Suche und Auswahl. Datenextraktion, Risk of Bias und Synthese erfasst sie nicht, und je
   Treffer ist der Entscheid einer Person festgehalten (kein unabhängiges Doppel-Screening). Das Protokoll sagt das auch so.
 - **Zotero:** lokal über die API von Zotero (Schreibfreigabe wie im übrigen Zotivity) oder, mit Schlüssel, über die Zotero-Web-API.
-  Schlüssel für die Web-API und die Datenbanken liest die App aus dem Schlüsselspeicher (`zotero-web`, `openalex` –
-  bei OpenAlex seit Februar 2026 nötig –, `ncbi`, `semanticscholar`); eine Einstellungsseite zum Eintragen ist geplant.
+  Schlüssel für die Web-API und die Datenbanken liegen im Schlüsselspeicher und werden in den Einstellungen
+  eingetragen: der Schlüssel für die Zotero-Web-API unter *Einstellungen → Zotero und Export*, die Schlüssel der
+  Datenbanken (`openalex` – bei OpenAlex seit Februar 2026 nötig –, `ncbi`, `semanticscholar`) unter
+  *Einstellungen → Datenbanken*, wo **Testen** jeden prüft.
 
 ## Forschungsstand
 
@@ -358,6 +373,11 @@ endgültige Text bleiben deine Arbeit (siehe [die Gefahr des Deskilling](#werkze
   Datei `zotivity-update.json` des neuesten Releases von GitHub. Abschalten bei der Installation (Kontrollkästchen
   «Beim Start nach Updates suchen») oder unter Einstellungen → Programm & Daten. Einzelheiten:
   [Datenschutzerklärung](PRIVACY.de.md).
+- **Sicherungen** bleiben auf dem Computer, ausser du wählst unter Einstellungen → Index einen Ordner (z. B.
+  switchdrive): Dann kommen Index, Recherchen, Einstellungen und eigene Zitierstile dorthin, API-Schlüssel nie.
+- **Abbildungen** (optional): Bildunterschrift, Text der Seite und – für Modelle, die Bilder verstehen – ein Bild
+  der Abbildung gehen nur an das gewählte Sprachmodell, wenn du «Beschreiben» wählst (auch «Abbildung beschreiben und
+  neu antworten» unter «Fragen») oder «Nach jedem Indexieren automatisch beschreiben» einschaltest.
 - **Downloads** von Modellen sind mit Commit und SHA-256 festgelegt; die eingebaute Laufzeit nimmt nur Anfragen mit dem
   zufälligen Schlüssel von Zotivity an.
 
@@ -398,7 +418,12 @@ suchen und mit Seitenzahl und Zotero-Link zitieren.
 - **Eingebaute Laufzeit startet nicht:** Fehlt eine Programmdatei (z. B. von einem Virenscanner entfernt), Zotivity
   neu installieren. Ladefehler eines Modells stehen in `Logs\llama-<Modell>.log`.
 - **Dokumente «ohne Text»:** Scans ohne Textebene. Texterkennung über *Einstellungen → Experten → Einlesen → OCR*
-  (benötigt eine Tesseract-Installation) oder die PDFs vorher mit OCR versehen.
+  (benötigt eine Tesseract-Installation; Zotivity ruft `tesseract.exe` auf) oder die PDFs vorher mit OCR versehen.
+- **Texte mit Fehler:** *Erneut versuchen* in der Meldung am Ende eines Laufs, ↻ neben *Indexieren* in der
+  Korpusliste oder die Karte *Texte ohne Text oder mit Fehler* unter Index. Nach einem Update werden sie einmal neu
+  gelesen.
+- **Abbildungen ohne Bild beschrieben:** Das gewählte Modell muss Bilder verstehen (*Einstellungen → Index →
+  Abbildungen*, *Bild mitschicken*). Eine Denktiefe wählen, die der Server kennt (manche kennen kein «mittel»).
 - **Logs:** `%LOCALAPPDATA%\Zotivity\Logs\zotivity.log`.
 - **Zotero-Datenordner in einem Cloud-Ordner** (OneDrive, Dropbox …): Zotero rät davon ab, weil das die Datenbank
   beschädigen kann; besser die Zotero-eigene Synchronisation verwenden. Zotivity ist davon nicht betroffen (liest nur
@@ -419,7 +444,8 @@ ausführen.
 ```
 src/zotivity/
   zotero/      Client für die lokale API (Lesen, Schreiben, Autorisierung)
-  extract/     PDF/EPUB/HTML/Word/ODT-Text mit Seitenzahlen, Chunking, Literaturverzeichnis-Erkennung
+  extract/     PDF- (PDFium), EPUB-, HTML-, Word-, ODT-Text mit Seitenzahlen, OCR über Tesseract, Abbildungen,
+               Chunking, Literaturverzeichnis-Erkennung
   embeddings/  eingebaut (llama.cpp: Laufzeit, Katalog, Download, Kurztest, Namenssuche), Ollama, OpenAI, Gemini, …
   llm/         Anthropic, OpenAI/DeepSeek/Mistral/Ollama, Gemini – gemeinsame Schnittstelle
   index/       SQLite (FTS5 + Vektoren je Embedding-Raum), Indexierer, Dubletten

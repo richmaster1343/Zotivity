@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -9,12 +10,13 @@ from dataclasses import dataclass, field
 
 from zotivity.engine import Engine
 from zotivity.catalog import PROVIDERS
+from zotivity.index.store import SearchFilter
 from zotivity.keystore import get_store
 from zotivity.llm import ChatMessage, GenParams, LLMError, UsageMeter, helper_model, main_model, truncation
-from zotivity.rag import prompts, stages, wholetext
+from zotivity.rag import figref, prompts, stages, wholetext
 from zotivity.rag.cards import QUESTION_TYPES, build_cards
 from zotivity.rag.plan import WHOLE_TOLERANCE, Plan, make_plan, retrieval_cfg
-from zotivity.rag.sources import build_sources, format_sources
+from zotivity.rag.sources import author_year, build_sources, format_sources
 from zotivity.retrieval import Searcher
 from zotivity.retrieval.rerank import CrossEncoderReranker, LLMReranker
 from zotivity.settings import RetrievalSettings
@@ -23,6 +25,7 @@ log = logging.getLogger(__name__)
 
 HISTORY_MESSAGES = 6
 CARDS_BUDGET = 30000  # Karten: rund 100 Texte à 300 Tokens
+PASSAGES_MIN = 1500  # Überblick: so viele Tokens Textstellen mindestens neben den Karten (sonst ein Drittel)
 STAGES_NOT_POSSIBLE = "Lesen in Etappen ist hier nicht möglich; die Antwort stützt sich auf Textstellen."
 NO_NOTES = "In keiner Etappe stand etwas zur Frage. Versuche es mit anderen Worten oder mit Textstellen."
 WHOLE_NOT_POSSIBLE = "Ganze Texte sind hier nicht möglich; die Antwort stützt sich auf Textstellen."
@@ -99,6 +102,29 @@ class ChatService:
             return CrossEncoderReranker(cfg.rerank_model)
         return None
 
+    def _focus_sources(self, focus: figref.Focus, queries: list[str], f: SearchFilter, cfg: RetrievalSettings,
+                       hits: list, reranker, question: str) -> list:
+        """Textstellen, wenn die Frage einen Text nennt oder nach einer Abbildung fragt: gefragte Abbildungen zuerst,
+        dann Textstellen aus dem genannten Text (eigene Suche nur dort, bis gut die Hälfte des Budgets), dann die
+        übrigen Treffer."""
+        store = self.engine.store
+        budget = cfg.context_token_budget
+        first = figref.figure_sources(store, focus.figures, set())
+        rest = hits
+        if focus.named:
+            named = set(focus.named)
+            only = dataclasses.replace(f, item_keys=[f"{lib}:{key}" for lib, key in focus.named])
+            cfg_named = cfg.model_copy(update={"top_k": max(cfg.top_k, 30), "max_chunks_per_doc": 50,
+                                               "mmr_lambda": 1.0, "neighbor_chunks": max(cfg.neighbor_chunks, 1)})
+            try:
+                named_hits = self.searcher.search(queries, only, cfg_named, reranker=reranker, rerank_query=question)
+            except Exception as e:  # noqa: BLE001 - dann wie bisher
+                log.warning("Suche im genannten Text fehlgeschlagen: %s", e)
+                named_hits = []
+            first += build_sources(store, named_hits, cfg_named.neighbor_chunks, int(budget * figref.NAMED_SHARE))
+            rest = [h for h in hits if (h.chunk["lib"], h.chunk["item_key"]) not in named]
+        return figref.combine(first, build_sources(store, rest, cfg.neighbor_chunks, budget), budget)
+
     def ask(self, question: str, chat_id: int | None = None, options: AskOptions | None = None) -> Iterator[dict]:
         """Erzeugt Ereignisse für die Oberfläche (Server-Sent Events)."""
         options = options or AskOptions()
@@ -128,12 +154,20 @@ class ChatService:
             yield {"type": "warning", "text": WHOLE_NOT_POSSIBLE}
         if plan.requested == "stages" and plan.mode == "passages" and plan.stages_reason not in ("", "search_only"):
             yield {"type": "warning", "text": STAGES_NOT_POSSIBLE}
+        # Genannter Text, gefragte Abbildung („Beschreibe Abbildung 1 in …“)
+        try:
+            focus = figref.focus(store, question, history, [(d.lib, d.item_key) for d in plan.docs])
+        except Exception as e:  # noqa: BLE001 - dann ohne
+            log.warning("Abbildungen/genannter Text nicht bestimmt: %s", e)
+            focus = figref.Focus()
+        figures_open = focus.open_figures(store) if settings.figures.enabled else []
+        extra = {"figures_open": figures_open} if figures_open else {}
         if plan.mode == "whole":
-            done = yield from self._ask_whole(question, chat_id, history, plan, llm_cfg, meter, setup_problem)
+            done = yield from self._ask_whole(question, chat_id, history, plan, llm_cfg, meter, setup_problem, extra)
             if done:
                 return
         if plan.mode == "stages":
-            done = yield from self._ask_stages(question, chat_id, history, plan, llm_cfg, meter, setup_problem)
+            done = yield from self._ask_stages(question, chat_id, history, plan, llm_cfg, meter, setup_problem, extra)
             if done:
                 return
 
@@ -161,10 +195,27 @@ class ChatService:
             yield {"type": "qtype", "qtype": qtype, "detected": detected, "chosen": options.qtype or "auto"}
         cards_mode = qtype == "overview" and plan.n_docs > 3 and not options.search_only
 
-        if cards_mode:  # Überblick: von jedem Text eine Karte statt Textstellen
+        n_cards = 0
+        if cards_mode:  # Überblick: von jedem Text eine Karte, dazu die passendsten Textstellen aus den Volltexten
             yield {"type": "status", "text": "Lege eine Karte je Text an …"}
-            budget = min(max(cfg.context_token_budget, CARDS_BUDGET), max(plan.limit, 4000))
-            sources = build_cards(self.engine, plan.docs, budget)
+            cap = max(plan.limit, 4000)
+            passage_budget = min(cfg.context_token_budget, max(PASSAGES_MIN, min(CARDS_BUDGET, cap) // 3))
+            card_budget = min(max(cfg.context_token_budget, CARDS_BUDGET), cap - passage_budget)
+            sources = build_cards(self.engine, plan.docs, card_budget)
+            n_cards = len(sources)
+            yield {"type": "status", "text": "Durchsuche die Volltexte …"}
+            try:
+                hits = self.searcher.search(queries, f, cfg, reranker=self._reranker(cfg, meter), rerank_query=question)
+                passages = [p for p in build_sources(store, hits, cfg.neighbor_chunks, passage_budget)
+                            if p.kind != "abstract"]  # Abstracts stehen schon auf den Karten
+            except Exception as e:  # noqa: BLE001 - dann wenigstens die Karten
+                yield {"type": "warning", "text": f"Keine Textstellen gefunden ({e}); die Antwort stützt sich auf die Karten."}
+                passages = []
+            for i, p in enumerate(passages):
+                p.n = n_cards + i + 1
+                if p.relevance:
+                    p.relevance["of"] = len(passages)
+            sources = sources + passages
         else:
             # 2. Suche (+ Recherche-Runden)
             yield {"type": "status", "text": "Durchsuche die Bibliothek …"}
@@ -198,19 +249,30 @@ class ChatService:
                 yield {"type": "queries", "queries": queries, "missing": (data or {}).get("missing", "")}
                 hits = self.searcher.search(queries, f, cfg, reranker=reranker, rerank_query=question)
 
-            sources = build_sources(store, hits, cfg.neighbor_chunks, cfg.context_token_budget)
+            if focus.named or focus.figures:
+                if focus.named:
+                    yield {"type": "status", "text": "Durchsuche den genannten Text …"}
+                sources = self._focus_sources(focus, queries, f, cfg, hits, reranker, question)
+            else:
+                sources = build_sources(store, hits, cfg.neighbor_chunks, cfg.context_token_budget)
         source_dicts = [s.as_dict() for s in sources]
         yield {"type": "sources", "sources": source_dicts}
         basis = {"mode": "passages", "passages": len(sources), "docs": len({(s.lib, s.item_key) for s in sources}),
                  "scope_docs": plan.n_docs, "qtype": qtype}
         if cards_mode:
-            basis = {"mode": "cards", "cards": len(sources), "scope_docs": plan.n_docs, "qtype": qtype}
+            passages_only = sources[n_cards:]
+            basis = {"mode": "cards", "cards": n_cards, "passages": len(passages_only),
+                     "passage_docs": len({(s.lib, s.item_key) for s in passages_only}), "scope_docs": plan.n_docs,
+                     "qtype": qtype}
+        elif focus.named:  # „zuerst im genannten Text: Ornelas et al. 2025“
+            heads = store.items(focus.named)
+            basis["named"] = [author_year(heads[k]) for k in focus.named if k in heads]
 
         if options.search_only:
             msg_id = store.add_chat_message(chat_id, "assistant", "", sources=source_dicts,
-                                            meta={"search_only": True, "queries": queries, "basis": basis})
+                                            meta={"search_only": True, "queries": queries, "basis": basis, **extra})
             yield {"type": "done", "chat_id": chat_id, "message_id": msg_id, "usage": meter.usage.as_dict(),
-                   "basis": basis}
+                   "basis": basis, **extra}
             return
         if not sources:
             text = ("Zu dieser Frage habe ich in den indexierten Texten nichts gefunden. "
@@ -230,9 +292,13 @@ class ChatService:
         system = (prompts.CARDS_SYSTEM if cards_mode else prompts.ANSWER_SYSTEM).format(
             language=prompts.language_rule(settings.output_language))
         messages = _history_messages(history)
-        heading = (f"Karten der Texte im Suchbereich ({len(sources)} von {plan.n_docs})" if cards_mode
-                   else "Textstellen aus der Bibliothek")
-        messages.append(ChatMessage("user", f"{heading}:\n\n{format_sources(sources)}\n\n---\n\nFrage: {question}"))
+        if cards_mode:
+            context = f"Karten der Texte im Suchbereich ({n_cards} von {plan.n_docs}):\n\n{format_sources(sources[:n_cards])}"
+            if len(sources) > n_cards:
+                context += f"\n\n---\n\nPassende Textstellen aus den Volltexten:\n\n{format_sources(sources[n_cards:])}"
+        else:
+            context = f"Textstellen aus der Bibliothek:\n\n{format_sources(sources)}"
+        messages.append(ChatMessage("user", f"{context}\n\n---\n\nFrage: {question}"))
         params = GenParams(max_tokens=llm_cfg.max_output_tokens, temperature=llm_cfg.temperature, effort=llm_cfg.effort)
         parts: list[str] = []
         served = [llm_cfg.model]
@@ -247,10 +313,10 @@ class ChatService:
         answer = "".join(parts)
         msg_id = store.add_chat_message(
             chat_id, "assistant", answer, sources=source_dicts,
-            meta={"queries": queries, "model": served[0], "usage": meter.usage.as_dict(), "basis": basis},
+            meta={"queries": queries, "model": served[0], "usage": meter.usage.as_dict(), "basis": basis, **extra},
         )
         yield {"type": "done", "chat_id": chat_id, "message_id": msg_id, "model": served[0],
-               "usage": meter.usage.as_dict(), "basis": basis}
+               "usage": meter.usage.as_dict(), "basis": basis, **extra}
 
     def _stream_answer(self, model, system: str, messages: list[ChatMessage], params: GenParams, parts: list[str],
                        served: list[str]) -> Iterator[dict]:
@@ -269,7 +335,7 @@ class ChatService:
                            "wiedergab (Sperre des Anbieters). Nochmals fragen, z. B. mit der Bitte um kürzere Zitate."}
 
     def _ask_whole(self, question: str, chat_id: int, history: list[dict], plan: Plan, llm_cfg, meter: UsageMeter,
-                   setup_problem: str | None):
+                   setup_problem: str | None, extra: dict | None = None):
         """Antwort aus ganzen Texten. Rückgabe False: die Texte sind doch zu lang – weiter mit Textstellen."""
         store = self.engine.store
         yield {"type": "status", "text": "Lese die ganzen Texte …"}
@@ -287,8 +353,8 @@ class ChatService:
             return True
         system = prompts.WHOLE_SYSTEM.format(language=prompts.language_rule(self.engine.settings.output_language),
                                              texts=wholetext.format_texts(texts))
-        yield from self._answer_from_texts(question, chat_id, history, system, texts, basis, {"mode": "whole"},
-                                           llm_cfg, meter)
+        yield from self._answer_from_texts(question, chat_id, history, system, texts, basis,
+                                           {"mode": "whole", **(extra or {})}, llm_cfg, meter)
         return True
 
     def _answer_from_texts(self, question: str, chat_id: int, history: list[dict], system: str, texts: list,
@@ -320,10 +386,11 @@ class ChatService:
             chat_id, "assistant", text, sources=dicts,
             meta={**meta, "raw": raw, "model": served[0], "usage": meter.usage.as_dict(), "basis": basis})
         yield {"type": "done", "chat_id": chat_id, "message_id": msg_id, "model": served[0],
-               "usage": meter.usage.as_dict(), "basis": basis, "stages": meta.get("stages")}
+               "usage": meter.usage.as_dict(), "basis": basis, "stages": meta.get("stages"),
+               **({"figures_open": meta["figures_open"]} if meta.get("figures_open") else {})}
 
     def _ask_stages(self, question: str, chat_id: int, history: list[dict], plan: Plan, llm_cfg, meter: UsageMeter,
-                    setup_problem: str | None):
+                    setup_problem: str | None, extra: dict | None = None):
         """Lesen in Etappen: Notizen je Etappe (parallel), dann die Antwort aus den Notizen. Rückgabe False: weiter
         mit Textstellen."""
         store = self.engine.store
@@ -394,5 +461,5 @@ class ChatService:
         system = prompts.STAGES_ANSWER_SYSTEM.format(
             texts="; ".join(f"[{w.n}] {w.citation}: {w.title}" for w in texts), language=language, notes=notes_text)
         yield from self._answer_from_texts(question, chat_id, history, system, texts, basis,
-                                           {"mode": "stages", "stages": stage_meta}, llm_cfg, meter)
+                                           {"mode": "stages", "stages": stage_meta, **(extra or {})}, llm_cfg, meter)
         return True

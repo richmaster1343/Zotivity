@@ -175,6 +175,29 @@ class ServerSettings(BaseModel):
     exit_after_zotero_closed_minutes: int = Field(0, ge=0)
 
 
+class FigureSettings(BaseModel):
+    # Abbildungen in PDFs (Bilder, Diagramme) beim Einlesen erkennen; ein Sprachmodell beschreibt sie, und die
+    # Beschreibung wird mit Seite durchsuchbar (Abschnitte der Art „figure“, „maschinell beschrieben“)
+    enabled: bool = False
+    model: Literal["helper", "main"] = "helper"
+    # das Bild mitschicken (für Modelle, die Bilder verstehen); sonst nur Bildunterschrift und Text in der Grafik
+    send_image: bool = True
+    max_per_doc: int = Field(40, ge=1, le=500)
+    # nach jedem Indexierlauf die offenen Abbildungen beschreiben (eigener Auftrag, höchstens auto_limit je Lauf)
+    auto_describe: bool = False
+    auto_limit: int = Field(200, ge=1, le=5000)
+
+
+class BackupSettings(BaseModel):
+    # Sicherung in einen selbst gewählten Ordner (z. B. switchdrive): Index, Recherchen, Einstellungen, eigene
+    # Zitierstile (backup.py); "" = aus
+    folder: str = ""
+    # so viele Sicherungen bleiben im Ordner
+    keep: int = Field(3, ge=1, le=30)
+    # automatisch höchstens einmal in so vielen Stunden (nach Indexierläufen und kurz nach dem Start); 0 = nur von Hand
+    every_hours: int = Field(24, ge=0, le=720)
+
+
 class Settings(BaseModel):
     version: int = 2
     # Sprache der Oberfläche (Wörterbücher in static/js/i18n) und der KI-Ausgaben („auto“ = Sprache der Frage)
@@ -200,6 +223,8 @@ class Settings(BaseModel):
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
     review: ReviewSettings = Field(default_factory=ReviewSettings)
     server: ServerSettings = Field(default_factory=ServerSettings)
+    backup: BackupSettings = Field(default_factory=BackupSettings)
+    figures: FigureSettings = Field(default_factory=FigureSettings)
 
 
 def _deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
